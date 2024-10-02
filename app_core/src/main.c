@@ -1,5 +1,7 @@
 #include <zephyr/device.h>
 #include <zephyr/devicetree.h>
+#include <zephyr/kernel.h>
+#include <zephyr/drivers/gpio.h>
 
 #include <zephyr/bluetooth/bluetooth.h>
 #include <zephyr/bluetooth/hci.h>
@@ -178,6 +180,28 @@ static void blink_stop(void)
 #endif /* LED0_NODE */
 #endif /* CONFIG_GPIO */
 
+/* Configuration of button and interrupt */
+/* Sleep timer 10 minutes  */
+#define SLEEP_TIME_MS 10 * 60 * 1000
+
+/* SW0_NODE is the devicetree node identifier for the node with alias "sw0" */
+#define SW0_NODE DT_ALIAS(sw0)
+static const struct gpio_dt_spec button = GPIO_DT_SPEC_GET(SW0_NODE, gpios);
+
+void read_voltage(void) {
+	// TODO
+	printk("Reading voltage, interrupt was triggered\n");
+};
+
+/* Define the callback function */
+void button_pressed(const struct device *dev, struct gpio_callback *cb, uint32_t pins)
+{
+	read_voltage();
+}
+
+/* Define a variable of type static struct gpio_callback */
+static struct gpio_callback button_cb_data;
+
 int main(void)
 {
 	int err;
@@ -256,15 +280,29 @@ int main(void)
 	blink_start();
 #endif /* HAS_LED */
 
-	/* Implement notification. */
+	/* Configure button */
+	int ret;
+
+	if (!device_is_ready(button.port)) {
+		return -1;
+	}
+
+	ret = gpio_pin_configure_dt(&button, GPIO_INPUT);
+	if (ret < 0) {
+		return -1;
+	}
+
+	/* Configure the interrupt on the button's pin */
+	ret = gpio_pin_interrupt_configure_dt(&button, GPIO_INT_EDGE_TO_ACTIVE);
+
+	/* Initialize the static struct gpio_callback variable   */
+	gpio_init_callback(&button_cb_data, button_pressed, BIT(button.pin));
+
+	/* Add the callback function by calling gpio_add_callback()   */
+	gpio_add_callback(button.port, &button_cb_data);
+
 	while (1) {
-		k_sleep(K_SECONDS(1));
-
-		/* Heartrate measurements simulation */
-		hrs_notify();
-
-		/* Battery level simulation */
-		bas_notify();
+		k_msleep(SLEEP_TIME_MS);
 
 		if (atomic_test_and_clear_bit(state, STATE_CONNECTED)) {
 			/* Connected callback executed */
@@ -296,6 +334,27 @@ int main(void)
 #endif /* HAS_LED */
 		}
 	}
-
 	return 0;
 }
+
+
+/*
+// Old version for notification
+
+	while (1) {
+		k_sleep(K_SECONDS(1));
+
+		// Heartrate measurements simulation
+		hrs_notify();
+
+		// Battery level simulation
+		bas_notify();
+
+		if (atomic_test_and_clear_bit(state, STATE_CONNECTED)) {
+			// etc
+		}
+
+	}
+
+
+*/
