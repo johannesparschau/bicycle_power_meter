@@ -1,0 +1,8 @@
+manifest:
+  remotes:
+    - name: zephyrproject
+      url-base: https://github.com/zephyrproject-rtos
+  projects:
+    - name: hci_rpmsg
+      remote: zephyrproject
+      revision: main

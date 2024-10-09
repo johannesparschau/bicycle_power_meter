@@ -10,12 +10,16 @@ c) App that runs on an Android phone, communicating with the board via Bluetooth
 Function: Read capacitor charge (voltage) at magnetic switch triggered interrupts. Convert to power reading with a data-defined calibration function, and Kalman filter. Broadcast the power reading via Bluetooth (later: following ANT+ Bicycle Power profile (either 1Hz, or event-synchronous))
 
 ## Platform
-Nordic nRF5340 eventually on application specific circuitry, but can be tested on a Thingy:53 or nRF5340 DK, running Zephyr RTOS. Compliance with the ANT+ protocol (Bicycle Power profile). Language: C. Development in VSCode with the nrfConnect Add-On.
+Nordic semiconductor nRF5340, eventually on application specific circuitry, but can be tested on a Thingy:53 or nRF5340 DK, running Zephyr RTOS. Compliance with the ANT+ protocol (Bicycle Power profile). Language: C. Development in VSCode with the nrfConnect Add-On.
+
+## Getting started
+### Using the software for the board
+Follow the steps on [Nordic Semiconductor Academy](https://academy.nordicsemi.com/courses/nrf-connect-sdk-fundamentals) to install all the required software. Afterwards, clone this repository, build the application (`west build`) and flash it to the board (`west flash`).
 
 ## Resources
-- Nordic semiconductors website
-- nrfConnect
-- Forum: DevZone
+- [Nordicsemi homepage](https://www.nordicsemi.com/)
+- Learn how to work with boards from Nordic semiconductor: [Nordicsemi Academy](https://academy.nordicsemi.com/)
+- Forum for questions: [Nordicsemi DevZone](https://devzone.nordicsemi.com/)
 
 ## Contact
 Institution: Microelectronics Research Unit, ITEE, University of Oulu  
