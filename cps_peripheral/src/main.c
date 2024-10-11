@@ -6,6 +6,8 @@
 #include <zephyr/device.h>
 #include <zephyr/devicetree.h>
 #include <zephyr/drivers/gpio.h>
+#include <zephyr/drivers/adc.h>
+#include <zephyr/logging/log.h>
 #include <zephyr/sys/printk.h>
 #include <zephyr/bluetooth/bluetooth.h>
 #include <zephyr/bluetooth/hci.h>
@@ -116,14 +118,19 @@ static void simulate_cycling_power_values(void) {
 #define SW1_NODE DT_ALIAS(sw1)
 static const struct gpio_dt_spec button1 = GPIO_DT_SPEC_GET(SW1_NODE, gpios);
 
-/* Read voltage from input pin, needs to be converted to digital signal and then send via btooth */
+/* Read voltage from input pin and convert it to digital signal */
 int read_voltage(void) {
-    // TODO read voltage from pin defined above (for now button 1 = sw1)
-    /* Read the status of the button and store it */
+    // Read the status of the button and store it to value
+    // TODO read voltage from pin defined above (for now: button 1 = sw1)
 	bool val = gpio_pin_get_dt(&button1);
 	printk("Reading voltage\n");
     return val;
 };
+
+void voltage_to_power(int voltage) {
+    // convert voltage to power, add it to cycling_power_value to be send via btooth
+    // needs calibration function (?)
+}
 
 // --------------------------------- INTERRUPT CONFIGS -----------------------------------------------
 
