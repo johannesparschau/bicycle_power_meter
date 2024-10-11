@@ -3,6 +3,9 @@
 #include <string.h>
 #include <errno.h>
 #include <zephyr/kernel.h>
+#include <zephyr/device.h>
+#include <zephyr/devicetree.h>
+#include <zephyr/drivers/gpio.h>
 #include <zephyr/sys/printk.h>
 #include <zephyr/bluetooth/bluetooth.h>
 #include <zephyr/bluetooth/hci.h>
@@ -107,10 +110,39 @@ static void simulate_cycling_power_values(void) {
     cycling_power_value[4] = (uint8_t)((cadence >> 8) & 0xFF);  // Cadence (MSB)
 }
 
+// --------------------------------- VOLTAGE READING -------------------------------------------------
+/* SW1_NODE is the devicetree node identifier for the node with alias "sw1"= button 1 */
+// TODO change to other pin where we get the voltage from
+#define SW1_NODE DT_ALIAS(sw1)
+static const struct gpio_dt_spec button1 = GPIO_DT_SPEC_GET(SW1_NODE, gpios);
+
+/* Read voltage from input pin, needs to be converted to digital signal and then send via btooth */
+int read_voltage(void) {
+    // TODO read voltage from pin defined above (for now button 1 = sw1)
+    /* Read the status of the button and store it */
+	bool val = gpio_pin_get_dt(&button1);
+	printk("Reading voltage\n");
+    return val;
+};
+
+// --------------------------------- INTERRUPT CONFIGS -----------------------------------------------
+
+/* SW0_NODE is the devicetree node identifier for the node with alias "sw0"= button 0 */
+#define SW0_NODE DT_ALIAS(sw0)
+static const struct gpio_dt_spec button0 = GPIO_DT_SPEC_GET(SW0_NODE, gpios);
+
+/* Define the callback function */
+void button_pressed(const struct device *dev, struct gpio_callback *cb, uint32_t pins)
+{
+	read_voltage();
+}
+/* Define a variable of type static struct gpio_callback */
+static struct gpio_callback button_cb_data;
+
 // --------------------------------- MAIN APPLICATION ------------------------------------------------
 
 /* Main function */
-void main(void) {
+int main(void) {
     int err;
 
     srand(k_uptime_get());
@@ -118,17 +150,37 @@ void main(void) {
     err = bt_enable(NULL);
     if (err) {
         printk("Bluetooth init failed (err %d)\n", err);
-        return;
+        return -1;
     }
 
     /* Load settings, such as Bluetooth identity address */
     err = settings_load();
     if (err) {
         printk("Settings load failed (err %d)\n", err);
-        return;
+        return -1;
     }
 
     bt_ready();
+
+    /* Init button for interrupt */
+    if (!device_is_ready(button0.port)) {
+		return -1;
+	}
+
+    err = gpio_pin_configure_dt(&button0, GPIO_INPUT);
+	if (err < 0) {
+		return -1;
+	}
+
+    /* Configure the interrupt on the button's pin */
+	err = gpio_pin_interrupt_configure_dt(&button0, GPIO_INT_EDGE_TO_ACTIVE);
+
+	/* Initialize the static struct gpio_callback variable   */
+	gpio_init_callback(&button_cb_data, button_pressed, BIT(button0.pin));
+
+	/* Add the callback function by calling gpio_add_callback()   */
+	gpio_add_callback(button0.port, &button_cb_data);
+
 
     while (1) {
         k_sleep(K_SECONDS(1));
