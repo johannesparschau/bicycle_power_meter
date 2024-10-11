@@ -109,7 +109,6 @@ static void hrs_notify(void)
 
 	if (hrf_ntf_enabled) {
 		bt_hrs_notify(heartrate);
-		bt_gatt_notify
 	}
 }
 
