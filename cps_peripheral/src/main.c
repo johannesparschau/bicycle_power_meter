@@ -1,21 +1,24 @@
+// basics
 #include <zephyr/types.h>
+#include <stdlib.h>
 #include <stddef.h>
 #include <string.h>
 #include <errno.h>
+#include <zephyr/sys/printk.h>
+
+// inputs
 #include <zephyr/kernel.h>
 #include <zephyr/device.h>
 #include <zephyr/devicetree.h>
 #include <zephyr/drivers/gpio.h>
-#include <zephyr/drivers/adc.h>
-#include <zephyr/logging/log.h>
-#include <zephyr/sys/printk.h>
+
+// bluetooth
 #include <zephyr/bluetooth/bluetooth.h>
 #include <zephyr/bluetooth/hci.h>
 #include <zephyr/bluetooth/conn.h>
 #include <zephyr/bluetooth/uuid.h>
 #include <zephyr/bluetooth/gatt.h>
 #include <zephyr/settings/settings.h>
-#include <stdlib.h>
 
 //------------------------- BT SERVICE SETUP ----------------------------------------
 #define BT_UUID_CPS BT_UUID_DECLARE_16(0x1818)  // CPS 16-bit UUID
@@ -113,22 +116,18 @@ static void simulate_cycling_power_values(void) {
 }
 
 // --------------------------------- VOLTAGE READING -------------------------------------------------
-/* SW1_NODE is the devicetree node identifier for the node with alias "sw1"= button 1 */
-// TODO change to other pin where we get the voltage from
-#define SW1_NODE DT_ALIAS(sw1)
-static const struct gpio_dt_spec button1 = GPIO_DT_SPEC_GET(SW1_NODE, gpios);
 
 /* Read voltage from input pin and convert it to digital signal */
 int read_voltage(void) {
     // Read the status of the button and store it to value
     // TODO read voltage from pin defined above (for now: button 1 = sw1)
-	bool val = gpio_pin_get_dt(&button1);
 	printk("Reading voltage\n");
-    return val;
+    return 0;
 };
 
 void voltage_to_power(int voltage) {
-    // convert voltage to power, add it to cycling_power_value to be send via btooth
+    // convert voltage to power
+    // add it to cycling_power_value to be send via btooth
     // needs calibration function (?)
 }
 
@@ -141,8 +140,10 @@ static const struct gpio_dt_spec button0 = GPIO_DT_SPEC_GET(SW0_NODE, gpios);
 /* Define the callback function */
 void button_pressed(const struct device *dev, struct gpio_callback *cb, uint32_t pins)
 {
-	read_voltage();
+	int vol = read_voltage();
+    voltage_to_power(vol);
 }
+
 /* Define a variable of type static struct gpio_callback */
 static struct gpio_callback button_cb_data;
 
@@ -174,6 +175,7 @@ int main(void) {
 		return -1;
 	}
 
+    /* Configure button as input */
     err = gpio_pin_configure_dt(&button0, GPIO_INPUT);
 	if (err < 0) {
 		return -1;
