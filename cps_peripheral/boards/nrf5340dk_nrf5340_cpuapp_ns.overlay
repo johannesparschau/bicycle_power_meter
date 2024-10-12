@@ -1,0 +1,29 @@
+/*
+ * SPDX-License-Identifier: Apache-2.0
+ *
+ * Copyright (c) 2022 Nordic Semiconductor ASA
+ */
+
+
+ /* create a node and set its io-channels to the ADC channel 0 */
+ // you could specify multiple channels, separated by comma (Ex: io-channels = <&adc0 1>, <&adc0 3>;
+ / {
+	zephyr,user {
+		io-channels = <&adc 0>;
+	};
+};
+
+/* Configure the ADC channel parameters */
+&adc {
+	#address-cells = <1>;
+	#size-cells = <0>;
+	status = "okay";
+	channel@0 {  // referencing channel 0 of the ADC
+		reg = <0>;
+		zephyr,gain = "ADC_GAIN_1_6";  // reading attenuated by (x 1/6), could be changed to 1/5, 1/4, 1/3, 1/2, 1, 2 or 4
+		zephyr,reference = "ADC_REF_INTERNAL";  // use internal +-0.6
+		zephyr,acquisition-time = <ADC_ACQ_TIME_DEFAULT>;  // default = 10 us
+		zephyr,input-positive = <NRF_SAADC_AIN0>; /* Single ended input set to input pin AIN0, which is P0.04 for nRF53xx */
+		zephyr,resolution = <12>;  // resolution: 12 bits
+	};
+};
