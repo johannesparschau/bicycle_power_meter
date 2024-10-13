@@ -24,14 +24,20 @@
 // Zephyr ADC API
 #include <zephyr/drivers/adc.h>
 
+
 //------------------------- ADC SETUP ----------------------------------------------
+
+
 
 //------------------------- BT SERVICE SETUP ----------------------------------------
 #define BT_UUID_CPS BT_UUID_DECLARE_16(0x1818)  // CPS 16-bit UUID
 #define BT_UUID_CPS_MEASUREMENT BT_UUID_DECLARE_16(0x2A63)  // CPS Measurement
 
-static uint8_t cycling_power_value[5];
+static uint8_t cycling_power_value[5];  // will be secured by semaphore
 static bool notifications_enabled = false;
+
+struct k_sem power_sem;
+k_sem_init(&power_sem, 0, 1);  // start value 0, limit 1
 
 /* Advertising Data (Include CPS UUID) */
 static const struct bt_data ad[] = {
@@ -114,11 +120,16 @@ static void simulate_cycling_power_values(void) {
     power = 50 + (rand() % 250);
     cadence = 80 + (rand() % 10);
 
-    cycling_power_value[0] = 0x00;  // Flags (set to 0 for simplicity)
-    cycling_power_value[1] = (uint8_t)(power & 0xFF);  // Power (LSB)
-    cycling_power_value[2] = (uint8_t)((power >> 8) & 0xFF);  // Power (MSB)
-    cycling_power_value[3] = (uint8_t)(cadence & 0xFF);  // Cadence (LSB)
-    cycling_power_value[4] = (uint8_t)((cadence >> 8) & 0xFF);  // Cadence (MSB)
+    if (k_sem_take(&power_sem, K_MSEC(50)) != 0) {
+        printk("Input data not available!");
+    } else {
+        cycling_power_value[0] = 0x00;  // Flags (set to 0 for simplicity)
+        cycling_power_value[1] = (uint8_t)(power & 0xFF);  // Power (LSB)
+        cycling_power_value[2] = (uint8_t)((power >> 8) & 0xFF);  // Power (MSB)
+        cycling_power_value[3] = (uint8_t)(cadence & 0xFF);  // Cadence (LSB)
+        cycling_power_value[4] = (uint8_t)((cadence >> 8) & 0xFF);  // Cadence (MSB)
+        k_sem_give(&power_sem);
+    }
 }
 
 // --------------------------------- ADC VOLTAGE READING -------------------------------------------------
@@ -182,9 +193,17 @@ int read_voltage(void) {
 };
 
 void voltage_to_power(int voltage) {
-    // convert voltage to power
-    // add it to cycling_power_value to be send via btooth
-    // needs calibration function (?)
+    /* 
+    convert voltage to power
+    add it to cycling_power_value to be send via btooth
+    needs calibration function (?)
+    */
+    if (k_sem_take(&power_sem, K_MSEC(50)) != 0) {
+        printk("Input data not available!");
+    } else {
+        // write to cycling_power_value
+        k_sem_give(&power_sem);
+    }
 }
 
 // --------------------------------- INTERRUPT CONFIGS -----------------------------------------------
