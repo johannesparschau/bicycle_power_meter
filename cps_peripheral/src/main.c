@@ -140,31 +140,23 @@ static void simulate_cycling_power_values(void) {
 // here only channel 0 so we can use ADC_DT_SPEC_GET() macro to get the io-channels at index 0
 static const struct adc_dt_spec adc_channel = ADC_DT_SPEC_GET(DT_PATH(zephyr_user));
 
+/* Define a variable of type adc_sequence and a buffer of type uint16_t to specify where the samples are to be written */
+int16_t buf;
+struct adc_sequence sequence = {
+    .buffer = &buf,
+    /* buffer size in bytes, not number of samples */
+    .buffer_size = sizeof(buf),
+    // Optional
+    //.calibrate = true,
+};
+
 /* Read voltage from input pin and convert it to digital signal */
 int read_voltage(void) {
-    LOG_INF("Reading voltage\n");
-    // Read the status of the button and store it to value
-    // TODO read voltage from pin defined above (for now: button 1 = sw1)
     int err;
     int val_mv;
     uint32_t count = 0;
 
-    /* Define a variable of type adc_sequence and a buffer of type uint16_t to specify where the samples are to be written */
-	int16_t buf;
-	struct adc_sequence sequence = {
-		.buffer = &buf,
-		/* buffer size in bytes, not number of samples */
-		.buffer_size = sizeof(buf),
-		// Optional
-		//.calibrate = true,
-	};
-
-    /* Initialize the ADC sequence */
-	err = adc_sequence_init_dt(&adc_channel, &sequence);
-	if (err < 0) {
-        LOG_ERR("Could not initalize sequence\n");
-		return 0;
-	}
+    LOG_INF("Reading voltage\n");
 
     /* Read a sample from the ADC */
     err = adc_read(adc_channel.dev, &sequence);
@@ -189,7 +181,7 @@ int read_voltage(void) {
     return val_mv;
 };
 
-void voltage_to_power(int voltage) {
+void voltage_to_power(int voltage_mv) {
     /* 
     convert voltage to power
     add it to cycling_power_value to be send via btooth
@@ -198,7 +190,7 @@ void voltage_to_power(int voltage) {
     if (k_mutex_lock(&power_val_mutex, K_MSEC(50)) != 0) {
         LOG_ERR("Input data not available!");
     } else {
-        // write to cycling_power_value
+        // write voltage_mv as power to cycling_power_value
         k_mutex_unlock(&power_val_mutex);
     }
 }
@@ -256,6 +248,13 @@ int main(void) {
 	if (err < 0) {
         LOG_ERR("Could not setup channel #%d (%d)", 0, err);
 		return -1;
+	}
+
+    /* Initialize the ADC sequence */
+	err = adc_sequence_init_dt(&adc_channel, &sequence);
+	if (err < 0) {
+        LOG_ERR("Could not initalize sequence\n");
+		return 0;
 	}
 
     /* -------------- INTERRUPT -----------------*/
