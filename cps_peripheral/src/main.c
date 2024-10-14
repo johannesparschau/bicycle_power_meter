@@ -239,7 +239,7 @@ int main(void) {
 
     /* Validate that the ADC peripheral (SAADC) is ready */
 	if (!adc_is_ready_dt(&adc_channel)) {
-        LOG_ERR("ADC controller devivce %s not ready", adc_channel.dev->name)
+        LOG_ERR("ADC controller devivce %s not ready", adc_channel.dev->name);
 		return -1;
 	}
 
