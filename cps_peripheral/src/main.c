@@ -25,6 +25,7 @@
 #include <zephyr/drivers/adc.h>
 
 //------------------------- GLOBALS ----------------------------------------------
+LOG_MODULE_REGISTER(cycling_power_meter, LOG_LEVEL_DBG);
 
 //------------------------- BT SERVICE SETUP ----------------------------------------
 #define BT_UUID_CPS BT_UUID_DECLARE_16(0x1818)  // CPS 16-bit UUID
@@ -45,7 +46,7 @@ static const struct bt_data ad[] = {
 /* CCC configuration change handler (for notifications) */
 static void ccc_cfg_changed(const struct bt_gatt_attr *attr, uint16_t value) {
     notifications_enabled = (value == BT_GATT_CCC_NOTIFY);
-    printk("Notifications %s\n", notifications_enabled ? "enabled" : "disabled");
+    LOG_INF("Notifications %s\n", notifications_enabled ? "enabled" : "disabled");
 }
 
 /* Read function for CPS (can be extended as needed) */
@@ -67,7 +68,7 @@ BT_GATT_SERVICE_DEFINE(cps_svc,
 static void send_cycling_power_notification(void) {
     if (notifications_enabled) {
         if (k_mutex_lock(&power_val_mutex, K_MSEC(50)) != 0) {
-            printk("Input data not available!");
+            LOG_ERR("Input data not available!");
         } else {
             bt_gatt_notify(NULL, &cps_svc.attrs[1], cycling_power_value, sizeof(cycling_power_value));
             k_mutex_unlock(&power_val_mutex);
@@ -80,15 +81,15 @@ static void send_cycling_power_notification(void) {
 /* Callback function for Bluetooth connection */
 static void connected(struct bt_conn *conn, uint8_t err) {
     if (err) {
-        printk("Connection failed (err 0x%02x)\n", err);
+        LOG_ERR("Connection failed (err 0x%02x)\n", err);
     } else {
-        printk("Connected\n");
+        LOG_INF("Connected\n");
     }
 }
 
 /* Callback function for Bluetooth disconnection */
 static void disconnected(struct bt_conn *conn, uint8_t reason) {
-    printk("Disconnected (reason 0x%02x)\n", reason);
+    LOG_INF("Disconnected (reason 0x%02x)\n", reason);
 }
 
 /* Register connection callbacks */
@@ -101,15 +102,15 @@ BT_CONN_CB_DEFINE(conn_callbacks) = {
 static void bt_ready(void) {
     int err;
 
-    printk("Bluetooth initialized\n");
+    LOG_INF("Bluetooth initialized\n");
 
     err = bt_le_adv_start(BT_LE_ADV_CONN, ad, ARRAY_SIZE(ad), NULL, 0);
     if (err) {
-        printk("Advertising failed to start (err %d)\n", err);
+        LOG_ERR("Advertising failed to start (err %d)\n", err);
         return;
     }
 
-    printk("Advertising successfully started\n");
+    LOG_INF("Advertising successfully started\n");
 }
 
 // ----------------------------- CYCLING POWER DEFINITIONS ------------------------------------------
@@ -123,7 +124,7 @@ static void simulate_cycling_power_values(void) {
     cadence = 80 + (rand() % 10);
 
     if (k_mutex_lock(&power_val_mutex, K_MSEC(50)) != 0) {
-        printk("Input data not available!");
+        LOG_ERR("Input data not available!");
     } else {
         cycling_power_value[0] = 0x00;  // Flags (set to 0 for simplicity)
         cycling_power_value[1] = (uint8_t)(power & 0xFF);  // Power (LSB)
@@ -141,7 +142,7 @@ static const struct adc_dt_spec adc_channel = ADC_DT_SPEC_GET(DT_PATH(zephyr_use
 
 /* Read voltage from input pin and convert it to digital signal */
 int read_voltage(void) {
-    printk("Reading voltage\n");
+    LOG_INF("Reading voltage\n");
     // Read the status of the button and store it to value
     // TODO read voltage from pin defined above (for now: button 1 = sw1)
     int err;
@@ -161,23 +162,19 @@ int read_voltage(void) {
     /* Initialize the ADC sequence */
 	err = adc_sequence_init_dt(&adc_channel, &sequence);
 	if (err < 0) {
-		//LOG_ERR("Could not initalize sequence");
-        printk("Could not initalize sequence\n");
+        LOG_ERR("Could not initalize sequence\n");
 		return 0;
 	}
 
     /* Read a sample from the ADC */
     err = adc_read(adc_channel.dev, &sequence);
     if (err < 0) {
-        printk("Could not read (%d)\n", err);
-        //LOG_ERR("Could not read (%d)", err);
+        LOG_ERR("Could not read (%d)", err);
         // continue;
     }
 
     val_mv = (int)buf;
-    //LOG_INF("ADC reading[%u]: %s, channel %d: Raw: %d", count++, adc_channel.dev->name,
-    //    adc_channel.channel_id, val_mv);
-    printk("ADC reading[%u]: %s, channel %d: Raw: %d", count++, adc_channel.dev->name,
+    LOG_INF("ADC reading[%u]: %s, channel %d: Raw: %d", count++, adc_channel.dev->name,
         adc_channel.channel_id, val_mv);
     
 
@@ -185,11 +182,9 @@ int read_voltage(void) {
     err = adc_raw_to_millivolts_dt(&adc_channel, &val_mv);
     /* conversion to mV may not be supported, skip if not */
     if (err < 0) {
-        //LOG_WRN(" (value in mV not available)\n");
-        printk(" (value in mV not available)\n");
+        LOG_WRN(" (value in mV not available)\n");
     } else {
-        //LOG_INF(" = %d mV", val_mv);
-        printk(" = %d mV\n", val_mv);
+        LOG_INF(" = %d mV", val_mv);
     }
     return val_mv;
 };
@@ -201,7 +196,7 @@ void voltage_to_power(int voltage) {
     needs calibration function (?)
     */
     if (k_mutex_lock(&power_val_mutex, K_MSEC(50)) != 0) {
-        printk("Input data not available!");
+        LOG_ERR("Input data not available!");
     } else {
         // write to cycling_power_value
         k_mutex_unlock(&power_val_mutex);
@@ -235,16 +230,14 @@ int main(void) {
 
     err = bt_enable(NULL);
     if (err) {
-        //LOG_ERR("Bluetooth init failed (err %d)\n", err);
-        printk("Bluetooth init failed (err %d)\n", err);
+        LOG_ERR("Bluetooth init failed (err %d)\n", err);
         return -1;
     }
 
     /* Load settings, such as Bluetooth identity address */
     err = settings_load();
     if (err) {
-        //LOG_ERR("Settings load failed (err %d)\n", err);
-        printk("Settings load failed (err %d)\n", err);
+        LOG_ERR("Settings load failed (err %d)\n", err);
         return -1;
     }
 
@@ -254,16 +247,14 @@ int main(void) {
 
     /* Validate that the ADC peripheral (SAADC) is ready */
 	if (!adc_is_ready_dt(&adc_channel)) {
-        //LOG_ERR("ADC controller devivce %s not ready", adc_channel.dev->name)
-		printk("ADC controller devivce %s not ready", adc_channel.dev->name);
+        LOG_ERR("ADC controller devivce %s not ready", adc_channel.dev->name)
 		return -1;
 	}
 
     /*  Setup the ADC channel */
 	err = adc_channel_setup_dt(&adc_channel);
 	if (err < 0) {
-        //LOG_ERR("Could not setup channel #%d (%d)", 0, err);
-		printk("Could not setup channel #%d (%d)", 0, err);
+        LOG_ERR("Could not setup channel #%d (%d)", 0, err);
 		return -1;
 	}
 
