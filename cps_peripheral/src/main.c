@@ -24,20 +24,17 @@
 // Zephyr ADC API
 #include <zephyr/drivers/adc.h>
 
-
-//------------------------- ADC SETUP ----------------------------------------------
-
-
+//------------------------- GLOBALS ----------------------------------------------
 
 //------------------------- BT SERVICE SETUP ----------------------------------------
 #define BT_UUID_CPS BT_UUID_DECLARE_16(0x1818)  // CPS 16-bit UUID
 #define BT_UUID_CPS_MEASUREMENT BT_UUID_DECLARE_16(0x2A63)  // CPS Measurement
 
-static uint8_t cycling_power_value[5];  // will be secured by semaphore
+static uint8_t cycling_power_value[5];  // will be secured by mutex
 static bool notifications_enabled = false;
 
-struct k_sem power_sem;
-k_sem_init(&power_sem, 0, 1);  // start value 0, limit 1
+// mutex for cycling_power_value
+K_MUTEX_DEFINE(power_val_mutex);  // start value 0, limit 1, same as: K_SEM_DEFINE(power_val_sem, 0, 1);
 
 /* Advertising Data (Include CPS UUID) */
 static const struct bt_data ad[] = {
@@ -69,7 +66,12 @@ BT_GATT_SERVICE_DEFINE(cps_svc,
 /* Function to send cycling power notifications */
 static void send_cycling_power_notification(void) {
     if (notifications_enabled) {
-        bt_gatt_notify(NULL, &cps_svc.attrs[1], cycling_power_value, sizeof(cycling_power_value));
+        if (k_mutex_lock(&power_val_mutex, K_MSEC(50)) != 0) {
+            printk("Input data not available!");
+        } else {
+            bt_gatt_notify(NULL, &cps_svc.attrs[1], cycling_power_value, sizeof(cycling_power_value));
+            k_mutex_unlock(&power_val_mutex);
+        }
     }
 }
 
@@ -120,7 +122,7 @@ static void simulate_cycling_power_values(void) {
     power = 50 + (rand() % 250);
     cadence = 80 + (rand() % 10);
 
-    if (k_sem_take(&power_sem, K_MSEC(50)) != 0) {
+    if (k_mutex_lock(&power_val_mutex, K_MSEC(50)) != 0) {
         printk("Input data not available!");
     } else {
         cycling_power_value[0] = 0x00;  // Flags (set to 0 for simplicity)
@@ -128,7 +130,7 @@ static void simulate_cycling_power_values(void) {
         cycling_power_value[2] = (uint8_t)((power >> 8) & 0xFF);  // Power (MSB)
         cycling_power_value[3] = (uint8_t)(cadence & 0xFF);  // Cadence (LSB)
         cycling_power_value[4] = (uint8_t)((cadence >> 8) & 0xFF);  // Cadence (MSB)
-        k_sem_give(&power_sem);
+        k_mutex_unlock(&power_val_mutex);
     }
 }
 
@@ -198,11 +200,11 @@ void voltage_to_power(int voltage) {
     add it to cycling_power_value to be send via btooth
     needs calibration function (?)
     */
-    if (k_sem_take(&power_sem, K_MSEC(50)) != 0) {
+    if (k_mutex_lock(&power_val_mutex, K_MSEC(50)) != 0) {
         printk("Input data not available!");
     } else {
         // write to cycling_power_value
-        k_sem_give(&power_sem);
+        k_mutex_unlock(&power_val_mutex);
     }
 }
 
