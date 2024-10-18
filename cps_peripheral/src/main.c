@@ -25,18 +25,21 @@
 // Zephyr ADC API
 #include <zephyr/drivers/adc.h>
 
-// GLOBAL DEFINES FOR EASY ALGORITHM TUNING
+//------------------------- GLOBALS ----------------------------------------------
+/* KALMAN FILTER: GLOBAL DEFINES FOR EASY ALGORITHM TUNING */
 #define CALIB_COEFF 0.00216    // Calibration coeff for mV -> W conversion
 #define KALMAN_X 0    // Initial state estimate (W)
 #define KALMAN_P 1.0    // Initial covariance estimate
 #define KALMAN_Q 0.01    // Process noise covariance
 #define KALMAN_R 1.0    // Measurement noise covariance
 
-
-//------------------------- GLOBALS ----------------------------------------------
+/* Define what messages whould be printed */
 LOG_MODULE_REGISTER(cycling_power_meter, LOG_LEVEL_DBG);
+
+/* SW0_NODE is the devicetree node identifier for the node with alias "sw0"= button 0 */
 #define SW0_NODE DT_ALIAS(sw0)
 static const struct gpio_dt_spec button0 = GPIO_DT_SPEC_GET(SW0_NODE, gpios);
+
 //------------------------- BT SERVICE SETUP ----------------------------------------
 #define BT_UUID_CPS BT_UUID_DECLARE_16(0x1818)  // CPS 16-bit UUID
 #define BT_UUID_CPS_MEASUREMENT BT_UUID_DECLARE_16(0x2A63)  // CPS Measurement
@@ -44,7 +47,7 @@ static const struct gpio_dt_spec button0 = GPIO_DT_SPEC_GET(SW0_NODE, gpios);
 static uint8_t cycling_power_value[5];  // will be secured by mutex
 static bool notifications_enabled = false;
 
-// mutex for cycling_power_value and cadence
+/* Mutex for cycling_power_value and cadence */
 K_MUTEX_DEFINE(power_val_mutex);  // start value 0, limit 1, same as: K_SEM_DEFINE(power_val_sem, 0, 1);
 K_MUTEX_DEFINE(cadence_val_mutex);
 K_MUTEX_DEFINE(last_press_time_mutex);
@@ -296,10 +299,6 @@ void adc_thread(void *arg1, void *arg2, void *arg3) {
 
 
 // --------------------------------- INTERRUPT CONFIGS -----------------------------------------------
-
-/* SW0_NODE is the devicetree node identifier for the node with alias "sw0"= button 0 */
-// #define SW0_NODE DT_ALIAS(sw0)
-// static const struct gpio_dt_spec button0 = GPIO_DT_SPEC_GET(SW0_NODE, gpios);
 
 static uint64_t last_button_time = 0;
 
