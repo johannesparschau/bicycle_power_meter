@@ -52,8 +52,10 @@ Mkfile.old
 dkms.conf
 
 # Build outputs
-build/
-*/build/
+build*/
+*/build*/
 
 .vscode/
 */.vscode/
+.venv/
+*/.venv/
