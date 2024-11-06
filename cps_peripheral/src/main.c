@@ -253,6 +253,9 @@ K_THREAD_STACK_DEFINE(adc_thread_stack, ADC_THREAD_STACK_SIZE);
 struct k_thread adc_thread_data;
 k_tid_t adc_thread_id;
 
+// Time while interrupts are disabled = time for calculating cadence and reading voltage
+static uint64_t last_ISR_time = 0;
+
 // Semaphore to signal the thread
 struct k_sem adc_semaphore;
 
@@ -292,6 +295,11 @@ void adc_thread(void *arg1, void *arg2, void *arg3) {
             LOG_ERR("Failed to lock mutex for updating power value");
         }
         
+        // Calclute time betwen interrupt disabling and enabling
+        // = time for calculating cadence and reading voltage
+        uint64_t current_time = k_uptime_get();
+        uint64_t time_ISR_disabled_ms = current_time - last_ISR_time;
+        LOG_INF("Time interrupts were disabled: %d ms", time_ISR_disabled_ms);
         // Re-enable button interrupts
         gpio_pin_interrupt_configure_dt(&button0, GPIO_INT_EDGE_TO_ACTIVE);
     }
@@ -305,8 +313,8 @@ static uint64_t last_button_time = 0;
 void button_pressed(const struct device *dev, struct gpio_callback *cb, uint32_t pins) {
     // Disable further interrupts to avoid reentrant execution
     gpio_pin_interrupt_configure_dt(&button0, GPIO_INT_DISABLE);
-
     uint64_t current_time = k_uptime_get();
+    last_ISR_time = current_time;
 
     // Calculate cadence (RPM) based on time since last button press
     if (last_button_time != 0) {
@@ -314,14 +322,18 @@ void button_pressed(const struct device *dev, struct gpio_callback *cb, uint32_t
 
         if (delta_t > 0) {
             uint16_t calculated_cadence = (60000 / delta_t);  // Calculating cadence (ms to min conversion)
+            // if cadence is larger than 250: assume error in calculation
+            // and don't update the cadence value (broadcast last measured value) 
+            if (calculated_cadence < 250) {
 
-            // Lock the cadence mutex before updating the global cadence
-            if (k_mutex_lock(&cadence_val_mutex, K_MSEC(50)) == 0) {
-                global_cadence = calculated_cadence;
-                LOG_INF("Calculated Cadence: %d RPM", global_cadence);
-                k_mutex_unlock(&cadence_val_mutex);
-            } else {
-                LOG_ERR("Failed to lock mutex for cadence update");
+                // Lock the cadence mutex before updating the global cadence
+                if (k_mutex_lock(&cadence_val_mutex, K_MSEC(50)) == 0) {
+                    global_cadence = calculated_cadence;
+                    LOG_INF("Calculated Cadence: %d RPM", global_cadence);
+                    k_mutex_unlock(&cadence_val_mutex);
+                } else {
+                    LOG_ERR("Failed to lock mutex for cadence update");
+                }
             }
         }
     }
