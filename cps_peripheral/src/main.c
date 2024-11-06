@@ -5,6 +5,7 @@
 #include <string.h>
 #include <errno.h>
 #include <math.h>
+#include <time.h>
 #include <zephyr/sys/printk.h>
 #include <zephyr/logging/log.h>
 
@@ -194,8 +195,9 @@ int read_voltage(void) {
     return val_mv;
 }
 
-static uint16_t global_cadence = 0; 
-// Convert mV to W
+static uint16_t global_cadence = 0;
+
+/* Convert mV to W */
 void voltage_to_power(int voltage_mv) {
     uint16_t cadence;
 
@@ -253,7 +255,7 @@ K_THREAD_STACK_DEFINE(adc_thread_stack, ADC_THREAD_STACK_SIZE);
 struct k_thread adc_thread_data;
 k_tid_t adc_thread_id;
 
-// Time while interrupts are disabled = time for calculating cadence and reading voltage
+// Time stamp when interrupts are disabled
 static uint64_t last_ISR_time = 0;
 
 // Semaphore to signal the thread
@@ -294,14 +296,14 @@ void adc_thread(void *arg1, void *arg2, void *arg3) {
         } else {
             LOG_ERR("Failed to lock mutex for updating power value");
         }
-        
-        // Calclute time betwen interrupt disabling and enabling
-        // = time for calculating cadence and reading voltage
-        uint64_t current_time = k_uptime_get();
-        uint64_t time_ISR_disabled_ms = current_time - last_ISR_time;
-        LOG_INF("Time interrupts were disabled: %d ms", time_ISR_disabled_ms);
+
         // Re-enable button interrupts
         gpio_pin_interrupt_configure_dt(&button0, GPIO_INT_EDGE_TO_ACTIVE);
+
+        // Calclute time between interrupt disabling and enabling
+        // = time for calculating cadence and reading voltage
+        int64_t time_ISR_disabled_ms = k_uptime_delta(&last_ISR_time);  // in ms
+        LOG_INF("Time interrupts were disabled: %lld ms", time_ISR_disabled_ms);
     }
 }
 
@@ -311,21 +313,24 @@ void adc_thread(void *arg1, void *arg2, void *arg3) {
 static uint64_t last_button_time = 0;
 
 void button_pressed(const struct device *dev, struct gpio_callback *cb, uint32_t pins) {
+
+    // Save time at which interrupts were disabled
+    last_ISR_time = k_uptime_get();
+
     // Disable further interrupts to avoid reentrant execution
     gpio_pin_interrupt_configure_dt(&button0, GPIO_INT_DISABLE);
     uint64_t current_time = k_uptime_get();
-    last_ISR_time = current_time;
 
     // Calculate cadence (RPM) based on time since last button press
     if (last_button_time != 0) {
-        uint64_t delta_t = current_time - last_button_time;
+        int64_t delta_t = k_uptime_delta(&last_button_time);  // in ms
 
         if (delta_t > 0) {
-            uint16_t calculated_cadence = (60000 / delta_t);  // Calculating cadence (ms to min conversion)
+            int16_t calculated_cadence = (60000 / delta_t);  // Calculating cadence (ms to min conversion)
+            
             // if cadence is larger than 250: assume error in calculation
             // and don't update the cadence value (broadcast last measured value) 
             if (calculated_cadence < 250) {
-
                 // Lock the cadence mutex before updating the global cadence
                 if (k_mutex_lock(&cadence_val_mutex, K_MSEC(50)) == 0) {
                     global_cadence = calculated_cadence;
@@ -334,6 +339,8 @@ void button_pressed(const struct device *dev, struct gpio_callback *cb, uint32_t
                 } else {
                     LOG_ERR("Failed to lock mutex for cadence update");
                 }
+            } else {
+                LOG_ERR("Calculated cadence above 250 (value: %d), skipped", calculated_cadence);
             }
         }
     }
