@@ -34,6 +34,9 @@
 #define KALMAN_Q 0.01    // Process noise covariance
 #define KALMAN_R 1.0    // Measurement noise covariance
 
+/* ISR */
+static uint32_t irq_lock_key;
+
 /* Define what messages whould be printed */
 LOG_MODULE_REGISTER(cycling_power_meter, LOG_LEVEL_DBG);
 
@@ -255,11 +258,8 @@ K_THREAD_STACK_DEFINE(adc_thread_stack, ADC_THREAD_STACK_SIZE);
 struct k_thread adc_thread_data;
 k_tid_t adc_thread_id;
 
-// Time stamp when interrupts are disabled
-static uint64_t last_ISR_time = 0;
-
 // Semaphore to signal the thread
-struct k_sem adc_semaphore;
+K_SEM_DEFINE(adc_semaphore, 0, 1);
 
 void adc_thread(void *arg1, void *arg2, void *arg3) {
     KalmanFilter kf;
@@ -298,27 +298,20 @@ void adc_thread(void *arg1, void *arg2, void *arg3) {
         }
 
         // Re-enable button interrupts
-        gpio_pin_interrupt_configure_dt(&button0, GPIO_INT_EDGE_TO_ACTIVE);
-
-        // Calclute time between interrupt disabling and enabling
-        // = time for calculating cadence and reading voltage
-        int64_t time_ISR_disabled_ms = k_uptime_delta(&last_ISR_time);  // in ms
-        LOG_INF("Time interrupts were disabled: %lld ms", time_ISR_disabled_ms);
+        irq_unlock(irq_lock_key);
     }
 }
 
 
 // --------------------------------- INTERRUPT CONFIGS -----------------------------------------------
 
-static uint64_t last_button_time = 0;
-
+// ISR
 void button_pressed(const struct device *dev, struct gpio_callback *cb, uint32_t pins) {
-
-    // Save time at which interrupts were disabled
-    last_ISR_time = k_uptime_get();
-
     // Disable further interrupts to avoid reentrant execution
-    gpio_pin_interrupt_configure_dt(&button0, GPIO_INT_DISABLE);
+    irq_lock_key = irq_lock();
+
+    volatile static uint64_t last_button_time = 0;
+    
     uint64_t current_time = k_uptime_get();
 
     // Calculate cadence (RPM) based on time since last button press
