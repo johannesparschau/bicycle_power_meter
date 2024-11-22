@@ -12,14 +12,8 @@
 // Zephyr ADC API
 #include <zephyr/drivers/adc.h>
 
-/* ------------------ GLOBALS ------------------ */
-extern uint16_t global_cadence = 0;
-extern uint8_t cycling_power_value[5];
-extern CALIB_COEFF;
+#include "../inc/defines.h"
 
-/* ------------------ MUTEXES ------------------ */
-extern struct k_mutex power_val_mutex;
-extern struct k_mutex cadence_val_mutex;
 
 /* Define a variable of type adc_dt_spec for each channel */
 static const struct adc_dt_spec adc_channel = ADC_DT_SPEC_GET(DT_PATH(zephyr_user));
