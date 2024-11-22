@@ -25,7 +25,13 @@
 // Zephyr ADC API
 #include <zephyr/drivers/adc.h>
 
-//------------------------- GLOBALS ----------------------------------------------
+// custom files
+#include "algorithms.h"
+
+/* ------------------------- GLOBALS -------------------------- */
+static uint16_t global_cadence = 0;
+static uint8_t cycling_power_value[5];
+
 /* KALMAN FILTER: GLOBAL DEFINES FOR EASY ALGORITHM TUNING */
 #define CALIB_COEFF 0.00216    // Calibration coeff for mV -> W conversion
 #define KALMAN_X 0    // Initial state estimate (W)
@@ -33,24 +39,27 @@
 #define KALMAN_Q 0.01    // Process noise covariance
 #define KALMAN_R 1.0    // Measurement noise covariance
 
-/* Define what messages whould be printed */
+/* ------------------------ MUTEXES --------------------------- */
+// start value 0, limit 1, same as: K_SEM_DEFINE(power_val_sem, 0, 1);
+K_MUTEX_DEFINE(power_val_mutex); 
+K_MUTEX_DEFINE(cadence_val_mutex);
+
+/* ---------------------- GLOBAL DEFINITIONS ------------------ */
+/* Define what messages should be printed */
 LOG_MODULE_REGISTER(cycling_power_meter, LOG_LEVEL_DBG);
 
-/* SW0_NODE is the devicetree node identifier for the node with alias "sw0"= button 0 */
+/* BUTTON: SW0_NODE is the devicetree node identifier for the node with alias "sw0"= button 0 */
 #define SW0_NODE DT_ALIAS(sw0)
 static const struct gpio_dt_spec button0 = GPIO_DT_SPEC_GET(SW0_NODE, gpios);
+
+// TODO: refactor below
+
 
 //------------------------- BT SERVICE SETUP ----------------------------------------
 #define BT_UUID_CPS BT_UUID_DECLARE_16(0x1818)  // CPS 16-bit UUID
 #define BT_UUID_CPS_MEASUREMENT BT_UUID_DECLARE_16(0x2A63)  // CPS Measurement
 
-static uint8_t cycling_power_value[5];  // will be secured by mutex
 static bool notifications_enabled = false;
-
-/* Mutex for cycling_power_value and cadence */
-K_MUTEX_DEFINE(power_val_mutex);  // start value 0, limit 1, same as: K_SEM_DEFINE(power_val_sem, 0, 1);
-K_MUTEX_DEFINE(cadence_val_mutex);
-K_MUTEX_DEFINE(last_press_time_mutex);
 
 /* Advertising Data (Include CPS UUID) */
 static const struct bt_data ad[] = {
@@ -147,78 +156,15 @@ static void bt_ready(void) {
 
 // --------------------------------- ADC VOLTAGE READING AND CONVERSION -------------------------------------------------
 
-/* Define a variable of type adc_dt_spec for each channel */
-static const struct adc_dt_spec adc_channel = ADC_DT_SPEC_GET(DT_PATH(zephyr_user));
+// MOVED: adc_channel to algorithms.c
 
-/* Define a variable of type adc_sequence and a buffer of type uint16_t to specify where the samples are to be written */
-int16_t buf;
-struct adc_sequence sequence = {
-    .buffer = &buf,
-    /* buffer size in bytes, not number of samples */
-    .buffer_size = sizeof(buf),
-    // Optional
-    //.calibrate = true,
-};
+// MOVED: adc_sequence sequence to algorithms.c
 
-/* Read voltage from input pin and convert it to digital signal */
-int read_voltage(void) {
-    int err;
-    int val_mv;
-    uint32_t count = 0;
+// MOVED: read_voltage to algorithms.c
 
-    LOG_INF("Reading voltage");
-    
-    err = adc_read(adc_channel.dev, &sequence);
-    
-    if (err < 0) {
-        LOG_ERR("Failed to read ADC: %d", err);
-    }
+// MOVED: global_cadence to algorithms.c
 
-    if (err < 0) {
-        LOG_ERR("Failed to read ADC after retries, %d", err);
-        return err;
-    }
-
-    val_mv = (int)buf;
-    LOG_INF("ADC reading[%u]: %s, channel %d: Raw: %d", count++, adc_channel.dev->name,
-            adc_channel.channel_id, val_mv);
-
-    /* Convert raw value to mV */
-    err = adc_raw_to_millivolts_dt(&adc_channel, &val_mv);
-    /* Conversion to mV may not be supported, skip if not */
-    if (err < 0) {
-        LOG_WRN(" (value in mV not available)");
-    } else {
-        LOG_INF(" = %d mV", val_mv);
-    }
-    return val_mv;
-}
-
-static uint16_t global_cadence = 0; 
-// Convert mV to W
-void voltage_to_power(int voltage_mv) {
-    uint16_t cadence;
-
-    if (k_mutex_lock(&cadence_val_mutex, K_MSEC(50)) == 0) {
-        cadence = global_cadence;  // Copy the global cadence while holding the mutex
-        k_mutex_unlock(&cadence_val_mutex);
-    } else {
-        LOG_ERR("Failed to lock mutex for reading cadence value");
-        return;
-    }
-    uint16_t power = voltage_mv * cadence * CALIB_COEFF;
-
-    if (k_mutex_lock(&power_val_mutex, K_MSEC(50)) == 0) {
-        cycling_power_value[0] = 0x00;
-        cycling_power_value[1] = (uint8_t)(power & 0xFF);
-        cycling_power_value[2] = (uint8_t)((power >> 8) & 0xFF);
-        cycling_power_value[3] = (uint8_t)(cadence & 0xFF);
-        cycling_power_value[4] = (uint8_t)((cadence >> 8) & 0xFF);
-        k_mutex_unlock(&power_val_mutex);
-    } else {
-        LOG_ERR("Failed to lock mutex for updating power value");
-    }
-}
+// MOVED: voltage_to_power to algorithms.c
 
 // Kalman Filtering
 typedef struct {
