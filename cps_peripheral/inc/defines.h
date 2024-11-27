@@ -1,13 +1,20 @@
 #ifndef DEFINES_H
 #define DEFINES_H
 
-#include <stdio.h>
-#include <zephyr/logging/log.h>
+// basics
 #include <zephyr/types.h>
+#include <stdlib.h>
+#include <stddef.h>
+#include <string.h>
+#include <errno.h>
+#include <math.h>
+#include <zephyr/sys/printk.h>
+#include <zephyr/logging/log.h>
+
+// inputs
+#include <zephyr/kernel.h>
 
 /* ------------------------- GLOBALS -------------------------- */
-static uint16_t global_cadence = 0;
-static uint8_t cycling_power_value[5];
 
 /* KALMAN FILTER: GLOBAL DEFINES FOR EASY ALGORITHM TUNING */
 #define CALIB_COEFF 0.00216    // Calibration coeff for mV -> W conversion
@@ -16,12 +23,7 @@ static uint8_t cycling_power_value[5];
 #define KALMAN_Q 0.01    // Process noise covariance
 #define KALMAN_R 1.0    // Measurement noise covariance
 
-/* ------------------------ MUTEXES --------------------------- */
-// start value 0, limit 1, same as: K_SEM_DEFINE(power_val_sem, 0, 1);
-K_MUTEX_DEFINE(power_val_mutex); 
-K_MUTEX_DEFINE(cadence_val_mutex);
-
-/* Define what messages should be printed */
-LOG_MODULE_REGISTER(cycling_power_meter, LOG_LEVEL_DBG);
+static uint16_t global_cadence=0;
+static uint8_t cycling_power_value[5];
 
 #endif

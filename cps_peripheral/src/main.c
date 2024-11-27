@@ -26,10 +26,14 @@
 #include <zephyr/drivers/adc.h>
 
 // custom files
-#include "../inc/algorithms.h"
-#include "../inc/defines.h"
+#include "defines.h"
+#include "algorithms.h"
 
 /* ---------------------- GLOBAL DEFINITIONS ------------------ */
+LOG_MODULE_REGISTER(cycling_power_meter, LOG_LEVEL_DBG);
+K_MUTEX_DEFINE(power_val_mutex);
+K_MUTEX_DEFINE(cadence_val_mutex);
+
 /* BUTTON: SW0_NODE is the devicetree node identifier for the node with alias "sw0"= button 0 */
 #define SW0_NODE DT_ALIAS(sw0)
 static const struct gpio_dt_spec button0 = GPIO_DT_SPEC_GET(SW0_NODE, gpios);

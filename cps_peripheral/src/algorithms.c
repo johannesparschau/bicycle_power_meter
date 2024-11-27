@@ -12,13 +12,16 @@
 // Zephyr ADC API
 #include <zephyr/drivers/adc.h>
 
-#include "../inc/defines.h"
+#include "defines.h"
+#include "algorithms.h"
 
+LOG_MODULE_DECLARE(cycling_power_meter);  // REGISTER in main.c
+extern struct k_mutex power_val_mutex;  // DEFINE in main.c
+extern struct k_mutex cadence_val_mutex;  // DEFINE in main.c 
 
-/* Define a variable of type adc_dt_spec for each channel */
+/* ------------------ GLOBALS ----------------------- */
 static const struct adc_dt_spec adc_channel = ADC_DT_SPEC_GET(DT_PATH(zephyr_user));
 
-/* Define a variable of type adc_sequence and a buffer of type uint16_t to specify where the samples are to be written */
 int16_t buf;
 struct adc_sequence sequence = {
     .buffer = &buf,
@@ -27,7 +30,6 @@ struct adc_sequence sequence = {
     // Optional
     //.calibrate = true,
 };
-
 
 /* ------------------- ADC (VOLTAGE READING and CONVERSION -------------------- */
 /* Read voltage from input pin and convert it to digital signal */
