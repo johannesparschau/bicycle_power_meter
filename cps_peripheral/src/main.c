@@ -258,7 +258,8 @@ struct k_thread adc_thread_data;
 k_tid_t adc_thread_id;
 
 // Semaphore to signal the thread
-struct k_sem adc_semaphore;
+// struct k_sem adc_semaphore;
+K_SEM_DEFINE(adc_semaphore, 0, 1);
 
 void adc_thread(void *arg1, void *arg2, void *arg3) {
     KalmanFilter kf;
@@ -337,13 +338,52 @@ static struct gpio_callback button_cb_data;
 /* GPIO callback structure for interrupt signal*/
 static struct gpio_callback interrupt_cb_data;
 
+K_SEM_DEFINE(cadence_semaphore, 0, 1);
+
 /* Interrupt handler function */
 void interrupt_handler(const struct device *dev, struct gpio_callback *cb, uint32_t pins) {
     LOG_INF("Rising edge detected on P0.05");
     // Signal the ADC thread to start
     k_sem_give(&adc_semaphore);
+    k_sem_give(&cadence_semaphore);
     
 }
+
+struct k_thread cadence_thread_data;
+k_tid_t cadence_thread_id;
+#define CADENCE_THREAD_STACK_SIZE 1024
+#define CADENCE_THREAD_PRIORITY -1 // high priority to ensure consistent readings
+
+void cadence_entry(void *arg1, void *arg2, void *arg3)
+{
+    while(1){
+        k_sem_take(&cadence_semaphore, K_FOREVER);
+        uint64_t current_time = k_uptime_get();
+
+        // Calculate cadence (RPM) based on time since last button press
+        if (last_button_time != 0) {
+            uint64_t delta_t = current_time - last_button_time;
+
+            if (delta_t > 0) {
+                uint16_t calculated_cadence = (60000 / delta_t);  // Calculating cadence (ms to min conversion)
+
+                // Lock the cadence mutex before updating the global cadence
+                if (k_mutex_lock(&cadence_val_mutex, K_MSEC(50)) == 0) {
+                    global_cadence = calculated_cadence;
+                    LOG_INF("Calculated Cadence: %d RPM", global_cadence);
+                    k_mutex_unlock(&cadence_val_mutex);
+                } else {
+                    LOG_ERR("Failed to lock mutex for cadence update");
+                }
+            }
+        }
+        // Update the last button press time
+        last_button_time = current_time;
+    }
+}
+
+K_THREAD_STACK_DEFINE(cadence_thread_stack, CADENCE_THREAD_STACK_SIZE);
+// K_THREAD_DEFINE(cadence_thread, 1024, cadence_entry, NULL, NULL, NULL, -1, 0, 0);
 // --------------------------------- MAIN APPLICATION ------------------------------------------------
 
 /* Main function */
@@ -368,7 +408,11 @@ int main(void) {
                                     NULL, NULL, NULL,
                                     BLE_THREAD_PRIORITY, 0, K_NO_WAIT);
 
-
+    cadence_thread_id = k_thread_create(&cadence_thread_data, cadence_thread_stack,
+                                        K_THREAD_STACK_SIZEOF(cadence_thread_stack),
+                                         cadence_entry,
+                                         NULL, NULL, NULL,
+                                         CADENCE_THREAD_STACK_SIZE, 0, K_NO_WAIT);
 
     /* -------------- BLUETOOTH -----------------*/
     // srand(k_uptime_get());
@@ -449,7 +493,7 @@ int main(void) {
     }
 
     /* Configure P0.05 as input with a rising edge interrupt */
-    err = gpio_pin_configure_dt(&signal_pin, GPIO_INPUT);
+    err = gpio_pin_configure_dt(&signal_pin, GPIO_INPUT | GPIO_ACTIVE_HIGH);
     if (err < 0) {
         LOG_ERR("Error configuring GPIO pin");
         return -1;
