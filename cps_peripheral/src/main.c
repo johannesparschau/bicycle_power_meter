@@ -39,9 +39,13 @@ LOG_MODULE_REGISTER(cycling_power_meter, LOG_LEVEL_DBG);
 /* SW0_NODE is the devicetree node identifier for the node with alias "sw0"= button 0 */
 #define SW0_NODE DT_ALIAS(sw0)
 static const struct gpio_dt_spec button0 = GPIO_DT_SPEC_GET(SW0_NODE, gpios);
-
+static const struct gpio_dt_spec signal_pin = {
+    .dt_flags = GPIO_ACTIVE_HIGH,
+    .pin = 5,
+    .port = DEVICE_DT_GET(DT_NODELABEL(gpio0))
+};
 //------------------------- BT SERVICE SETUP ----------------------------------------
-#define BT_UUID_CPS BT_UUID_DECLARE_16(0x1818)  // CPS 16-bit UUID
+// #define BT_UUID_CPS BT_UUID_DECLARE_16(0x1818)  // CPS 16-bit UUID
 #define BT_UUID_CPS_MEASUREMENT BT_UUID_DECLARE_16(0x2A63)  // CPS Measurement
 
 static uint8_t cycling_power_value[5];  // will be secured by mutex
@@ -157,7 +161,7 @@ struct adc_sequence sequence = {
     /* buffer size in bytes, not number of samples */
     .buffer_size = sizeof(buf),
     // Optional
-    //.calibrate = true,
+    .calibrate = true,
 };
 
 /* Read voltage from input pin and convert it to digital signal */
@@ -291,9 +295,6 @@ void adc_thread(void *arg1, void *arg2, void *arg3) {
         } else {
             LOG_ERR("Failed to lock mutex for updating power value");
         }
-        
-        // Re-enable button interrupts
-        gpio_pin_interrupt_configure_dt(&button0, GPIO_INT_EDGE_TO_ACTIVE);
     }
 }
 
@@ -303,9 +304,6 @@ void adc_thread(void *arg1, void *arg2, void *arg3) {
 static uint64_t last_button_time = 0;
 
 void button_pressed(const struct device *dev, struct gpio_callback *cb, uint32_t pins) {
-    // Disable further interrupts to avoid reentrant execution
-    gpio_pin_interrupt_configure_dt(&button0, GPIO_INT_DISABLE);
-
     uint64_t current_time = k_uptime_get();
 
     // Calculate cadence (RPM) based on time since last button press
@@ -335,6 +333,17 @@ void button_pressed(const struct device *dev, struct gpio_callback *cb, uint32_t
 
 /* Define a variable of type static struct gpio_callback */
 static struct gpio_callback button_cb_data;
+
+/* GPIO callback structure for interrupt signal*/
+static struct gpio_callback interrupt_cb_data;
+
+/* Interrupt handler function */
+void interrupt_handler(const struct device *dev, struct gpio_callback *cb, uint32_t pins) {
+    LOG_INF("Rising edge detected on P0.05");
+    // Signal the ADC thread to start
+    k_sem_give(&adc_semaphore);
+    
+}
 // --------------------------------- MAIN APPLICATION ------------------------------------------------
 
 /* Main function */
@@ -431,6 +440,32 @@ int main(void) {
     gpio_add_callback(button0.port, &button_cb_data);
 
     LOG_INF("GPIO interrupt routine set up");
+    
+    // Rising edge signal triggered interrupt
+    
+    if (!device_is_ready(signal_pin.port)) {
+        LOG_ERR("Error: GPIO device %s is not ready", signal_pin.port->name);
+        return -1;
+    }
+
+    /* Configure P0.05 as input with a rising edge interrupt */
+    err = gpio_pin_configure_dt(&signal_pin, GPIO_INPUT);
+    if (err < 0) {
+        LOG_ERR("Error configuring GPIO pin");
+        return -1;
+    }
+
+    err = gpio_pin_interrupt_configure_dt(&signal_pin, GPIO_INT_EDGE_RISING);
+    if (err < 0) {
+        LOG_ERR("Error configuring GPIO interrupt");
+        return -1;
+    }
+
+    /* Initialize and add GPIO callback */
+    gpio_init_callback(&interrupt_cb_data, interrupt_handler, BIT(signal_pin.pin));
+    gpio_add_callback(signal_pin.port, &interrupt_cb_data);
+
+    LOG_INF("Interrupt on P0.05 configured for rising edge");
 
     LOG_INF("Device completely set up and functional");
 
