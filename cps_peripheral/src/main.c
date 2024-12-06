@@ -40,7 +40,7 @@ LOG_MODULE_REGISTER(cycling_power_meter, LOG_LEVEL_DBG);
 #define SW0_NODE DT_ALIAS(sw0)
 static const struct gpio_dt_spec button0 = GPIO_DT_SPEC_GET(SW0_NODE, gpios);
 static const struct gpio_dt_spec signal_pin = {
-    .dt_flags = GPIO_ACTIVE_HIGH,
+    .dt_flags = GPIO_INT_EDGE_RISING,
     .pin = 5,
     .port = DEVICE_DT_GET(DT_NODELABEL(gpio0))
 };
