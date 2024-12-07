@@ -97,7 +97,7 @@ static void send_cycling_power_notification(void) {
 
 // Thread stack and priority definitions for BLE notification
 #define BLE_THREAD_STACK_SIZE 1024
-#define BLE_THREAD_PRIORITY 1
+#define BLE_THREAD_PRIORITY 3
 K_THREAD_STACK_DEFINE(ble_thread_stack, BLE_THREAD_STACK_SIZE);
 struct k_thread ble_thread_data;
 k_tid_t ble_thread_id;
@@ -252,7 +252,7 @@ void kalman_update(KalmanFilter* kf, double measurement) {
 
 // Thread stack and priority definitions
 #define ADC_THREAD_STACK_SIZE 1024
-#define ADC_THREAD_PRIORITY -1 // high priority to ensure consistent readings
+#define ADC_THREAD_PRIORITY 1 // high priority to ensure consistent readings
 K_THREAD_STACK_DEFINE(adc_thread_stack, ADC_THREAD_STACK_SIZE);
 struct k_thread adc_thread_data;
 k_tid_t adc_thread_id;
@@ -301,34 +301,34 @@ void adc_thread(void *arg1, void *arg2, void *arg3) {
 
 
 // --------------------------------- INTERRUPT CONFIGS -----------------------------------------------
+static struct k_timer debounce_timer;
+
+volatile bool debounce_flag = false;
+
+#define DEBOUNCE_DELAY_MS 200
+
+
+K_SEM_DEFINE(cadence_semaphore, 0, 1);
+
+/* Timer Callback: Reset debounce flag */
+void debounce_timer_handler(struct k_timer *timer_id) {
+    debounce_flag = false;
+}
 
 static uint64_t last_button_time = 0;
 
 void button_pressed(const struct device *dev, struct gpio_callback *cb, uint32_t pins) {
-    uint64_t current_time = k_uptime_get();
-
-    // Calculate cadence (RPM) based on time since last button press
-    if (last_button_time != 0) {
-        uint64_t delta_t = current_time - last_button_time;
-
-        if (delta_t > 0) {
-            uint16_t calculated_cadence = (60000 / delta_t);  // Calculating cadence (ms to min conversion)
-
-            // Lock the cadence mutex before updating the global cadence
-            if (k_mutex_lock(&cadence_val_mutex, K_MSEC(50)) == 0) {
-                global_cadence = calculated_cadence;
-                LOG_INF("Calculated Cadence: %d RPM", global_cadence);
-                k_mutex_unlock(&cadence_val_mutex);
-            } else {
-                LOG_ERR("Failed to lock mutex for cadence update");
-            }
-        }
+    if (debounce_flag) {
+        // Ignore if still debouncing
+        return;
     }
 
-    // Update the last button press time
-    last_button_time = current_time;
-
+    debounce_flag = true;
+    k_timer_start(&debounce_timer, K_MSEC(DEBOUNCE_DELAY_MS), K_NO_WAIT);
+    
+    LOG_INF("Rising edge detected on P0.05");
     // Signal the ADC thread to start
+    k_sem_give(&cadence_semaphore);
     k_sem_give(&adc_semaphore);
 }
 
@@ -338,15 +338,23 @@ static struct gpio_callback button_cb_data;
 /* GPIO callback structure for interrupt signal*/
 static struct gpio_callback interrupt_cb_data;
 
-K_SEM_DEFINE(cadence_semaphore, 0, 1);
+
+
 
 /* Interrupt handler function */
 void interrupt_handler(const struct device *dev, struct gpio_callback *cb, uint32_t pins) {
+    if (debounce_flag) {
+        // Ignore if still debouncing
+        return;
+    }
+
+    debounce_flag = true;
+    k_timer_start(&debounce_timer, K_MSEC(DEBOUNCE_DELAY_MS), K_NO_WAIT);
+    
     LOG_INF("Rising edge detected on P0.05");
     // Signal the ADC thread to start
-    k_sem_give(&adc_semaphore);
     k_sem_give(&cadence_semaphore);
-    
+    k_sem_give(&adc_semaphore);
 }
 
 struct k_thread cadence_thread_data;
@@ -482,6 +490,9 @@ int main(void) {
 
     /* Add the callback function by calling gpio_add_callback()   */
     gpio_add_callback(button0.port, &button_cb_data);
+    
+    /* Initialize the timer */
+    k_timer_init(&debounce_timer, debounce_timer_handler, NULL);
 
     LOG_INF("GPIO interrupt routine set up");
     
