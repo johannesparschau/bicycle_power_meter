@@ -13,14 +13,16 @@ CPS_MEASUREMENT_UUID = "00002a63-0000-1000-8000-00805f9b34fb"  # UUID for Cyclin
 # Global variables for power
 instant_power = 0
 power_readings = []
+instant_cadence = 0
 
 # Function to handle received notifications
 def notification_handler(sender: int, data: bytearray):
-    global instant_power, power_readings
+    global instant_power, power_readings, instant_cadence
 
     # Parse the data based on the BLE CPS specification
     instant_power = int.from_bytes(data[1:3], byteorder="little")
-    print(f"Instantaneous Power: {instant_power} W")
+    instant_cadence = int.from_bytes(data[3:5], byteorder="little")
+    print(f"Instantaneous Power: {instant_power} W, Current cadence: {instant_cadence}")
 
     power_readings.append(instant_power)
     if len(power_readings) > 50:  # Keep last 50 readings for plotting
@@ -32,6 +34,7 @@ def notification_handler(sender: int, data: bytearray):
 # GUI update function
 def update_gui():
     power_label.config(text=f"{instant_power} W")
+    cadence_label.config(text=f"{instant_cadence} RPM")
     
     # Update plot
     ax.clear()
@@ -66,12 +69,20 @@ def run_asyncio_loop():
 root = tk.Tk()
 root.title("Cycling Power Meter")
 
-frame = ttk.Frame(root, padding="10")
+frame = ttk.Frame(root, padding=20)
 frame.grid(row=0, column=0, sticky=(tk.W, tk.E, tk.N, tk.S))
 
+# Create a sub-frame to hold power and cadence side by side
+sub_frame = ttk.Frame(frame)
+sub_frame.grid(row=0, column=0)
+
 # Instant Power Label
-power_label = ttk.Label(frame, text="0 W", font=("Arial", 48))
-power_label.grid(row=0, column=0, padx=20, pady=20)
+power_label = ttk.Label(sub_frame, text="0 W", font=("Arial", 48))
+power_label.pack(side="left", padx=20)
+
+# Cadence Label
+cadence_label = ttk.Label(sub_frame, text="0 RPM", font=("Arial", 48))
+cadence_label.pack(side="left", padx=20)
 
 # Matplotlib Plot for Time Series of Power Readings
 fig, ax = plt.subplots()
