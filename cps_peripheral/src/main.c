@@ -267,7 +267,7 @@ void adc_thread(void *arg1, void *arg2, void *arg3) {
         // Perform ADC reading
         int voltage_mv = read_voltage();
         if (voltage_mv < 0) {
-            continue;  // Skip this iteration if reading failed
+            voltage_mv = 0;  // convert negative voltage readings to 0
         }
 
         // Convert voltage to power
