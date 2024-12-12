@@ -25,6 +25,9 @@
 // Zephyr ADC API
 #include <zephyr/drivers/adc.h>
 
+//Custom
+#include "../include/algorithms.h"
+
 //------------------------- GLOBALS ----------------------------------------------
 /* KALMAN FILTER: GLOBAL DEFINES FOR EASY ALGORITHM TUNING */
 #define CALIB_COEFF 0.00216    // Calibration coeff for mV -> W conversion
@@ -39,13 +42,9 @@ LOG_MODULE_REGISTER(cycling_power_meter, LOG_LEVEL_DBG);
 /* SW0_NODE is the devicetree node identifier for the node with alias "sw0"= button 0 */
 #define SW0_NODE DT_ALIAS(sw0)
 static const struct gpio_dt_spec button0 = GPIO_DT_SPEC_GET(SW0_NODE, gpios);
-static const struct gpio_dt_spec signal_pin = {
-    .dt_flags = GPIO_ACTIVE_HIGH,
-    .pin = 5,
-    .port = DEVICE_DT_GET(DT_NODELABEL(gpio0))
-};
+
 //------------------------- BT SERVICE SETUP ----------------------------------------
-// #define BT_UUID_CPS BT_UUID_DECLARE_16(0x1818)  // CPS 16-bit UUID
+#define BT_UUID_CPS BT_UUID_DECLARE_16(0x1818)  // CPS 16-bit UUID
 #define BT_UUID_CPS_MEASUREMENT BT_UUID_DECLARE_16(0x2A63)  // CPS Measurement
 
 static uint8_t cycling_power_value[5];  // will be secured by mutex
@@ -97,7 +96,7 @@ static void send_cycling_power_notification(void) {
 
 // Thread stack and priority definitions for BLE notification
 #define BLE_THREAD_STACK_SIZE 1024
-#define BLE_THREAD_PRIORITY 3
+#define BLE_THREAD_PRIORITY 1
 K_THREAD_STACK_DEFINE(ble_thread_stack, BLE_THREAD_STACK_SIZE);
 struct k_thread ble_thread_data;
 k_tid_t ble_thread_id;
@@ -148,23 +147,24 @@ static void bt_ready(void) {
 
     LOG_INF("Advertising successfully started");
 }
-
+/*
+// MOVED TO ALGORITHMS
 // --------------------------------- ADC VOLTAGE READING AND CONVERSION -------------------------------------------------
 
-/* Define a variable of type adc_dt_spec for each channel */
+// Define a variable of type adc_dt_spec for each channel
 static const struct adc_dt_spec adc_channel = ADC_DT_SPEC_GET(DT_PATH(zephyr_user));
 
-/* Define a variable of type adc_sequence and a buffer of type uint16_t to specify where the samples are to be written */
+// Define a variable of type adc_sequence and a buffer of type uint16_t to specify where the samples are to be written
 int16_t buf;
 struct adc_sequence sequence = {
     .buffer = &buf,
-    /* buffer size in bytes, not number of samples */
+    // buffer size in bytes, not number of samples
     .buffer_size = sizeof(buf),
     // Optional
-    .calibrate = true,
+    //.calibrate = true,
 };
 
-/* Read voltage from input pin and convert it to digital signal */
+// Read voltage from input pin and convert it to digital signal
 int read_voltage(void) {
     int err;
     int val_mv;
@@ -187,9 +187,9 @@ int read_voltage(void) {
     LOG_INF("ADC reading[%u]: %s, channel %d: Raw: %d", count++, adc_channel.dev->name,
             adc_channel.channel_id, val_mv);
 
-    /* Convert raw value to mV */
+    // Convert raw value to mV
     err = adc_raw_to_millivolts_dt(&adc_channel, &val_mv);
-    /* Conversion to mV may not be supported, skip if not */
+    // Conversion to mV may not be supported, skip if not
     if (err < 0) {
         LOG_WRN(" (value in mV not available)");
     } else {
@@ -223,6 +223,7 @@ void voltage_to_power(int voltage_mv) {
         LOG_ERR("Failed to lock mutex for updating power value");
     }
 }
+*/
 
 // Kalman Filtering
 typedef struct {
@@ -252,14 +253,13 @@ void kalman_update(KalmanFilter* kf, double measurement) {
 
 // Thread stack and priority definitions
 #define ADC_THREAD_STACK_SIZE 1024
-#define ADC_THREAD_PRIORITY 1 // high priority to ensure consistent readings
+#define ADC_THREAD_PRIORITY -1 // high priority to ensure consistent readings
 K_THREAD_STACK_DEFINE(adc_thread_stack, ADC_THREAD_STACK_SIZE);
 struct k_thread adc_thread_data;
 k_tid_t adc_thread_id;
 
 // Semaphore to signal the thread
-// struct k_sem adc_semaphore;
-K_SEM_DEFINE(adc_semaphore, 0, 1);
+struct k_sem adc_semaphore;
 
 void adc_thread(void *arg1, void *arg2, void *arg3) {
     KalmanFilter kf;
@@ -272,7 +272,7 @@ void adc_thread(void *arg1, void *arg2, void *arg3) {
         // Perform ADC reading
         int voltage_mv = read_voltage();
         if (voltage_mv < 0) {
-            voltage_mv = 0;  // convert negative voltage readings to 0
+            continue;  // Skip this iteration if reading failed
         }
 
         // Convert voltage to power
@@ -296,102 +296,50 @@ void adc_thread(void *arg1, void *arg2, void *arg3) {
         } else {
             LOG_ERR("Failed to lock mutex for updating power value");
         }
+        
+        // Re-enable button interrupts
+        gpio_pin_interrupt_configure_dt(&button0, GPIO_INT_EDGE_TO_ACTIVE);
     }
 }
 
 
 // --------------------------------- INTERRUPT CONFIGS -----------------------------------------------
-static struct k_timer debounce_timer;
-
-volatile bool debounce_flag = false;
-
-#define DEBOUNCE_DELAY_MS 200
-
-
-K_SEM_DEFINE(cadence_semaphore, 0, 1);
-
-/* Timer Callback: Reset debounce flag */
-void debounce_timer_handler(struct k_timer *timer_id) {
-    debounce_flag = false;
-}
 
 static uint64_t last_button_time = 0;
 
 void button_pressed(const struct device *dev, struct gpio_callback *cb, uint32_t pins) {
-    if (debounce_flag) {
-        // Ignore if still debouncing
-        return;
+    // Disable further interrupts to avoid reentrant execution
+    gpio_pin_interrupt_configure_dt(&button0, GPIO_INT_DISABLE);
+
+    uint64_t current_time = k_uptime_get();
+
+    // Calculate cadence (RPM) based on time since last button press
+    if (last_button_time != 0) {
+        uint64_t delta_t = current_time - last_button_time;
+
+        if (delta_t > 0) {
+            uint16_t calculated_cadence = (60000 / delta_t);  // Calculating cadence (ms to min conversion)
+
+            // Lock the cadence mutex before updating the global cadence
+            if (k_mutex_lock(&cadence_val_mutex, K_MSEC(50)) == 0) {
+                global_cadence = calculated_cadence;
+                LOG_INF("Calculated Cadence: %d RPM", global_cadence);
+                k_mutex_unlock(&cadence_val_mutex);
+            } else {
+                LOG_ERR("Failed to lock mutex for cadence update");
+            }
+        }
     }
 
-    debounce_flag = true;
-    k_timer_start(&debounce_timer, K_MSEC(DEBOUNCE_DELAY_MS), K_NO_WAIT);
-    
-    LOG_INF("Rising edge detected on P0.05");
+    // Update the last button press time
+    last_button_time = current_time;
+
     // Signal the ADC thread to start
-    k_sem_give(&cadence_semaphore);
     k_sem_give(&adc_semaphore);
 }
 
 /* Define a variable of type static struct gpio_callback */
 static struct gpio_callback button_cb_data;
-
-/* GPIO callback structure for interrupt signal*/
-static struct gpio_callback interrupt_cb_data;
-
-
-
-
-/* Interrupt handler function */
-void interrupt_handler(const struct device *dev, struct gpio_callback *cb, uint32_t pins) {
-    if (debounce_flag) {
-        // Ignore if still debouncing
-        return;
-    }
-
-    debounce_flag = true;
-    k_timer_start(&debounce_timer, K_MSEC(DEBOUNCE_DELAY_MS), K_NO_WAIT);
-    
-    LOG_INF("Rising edge detected on P0.05");
-    // Signal the ADC thread to start
-    k_sem_give(&cadence_semaphore);
-    k_sem_give(&adc_semaphore);
-}
-
-struct k_thread cadence_thread_data;
-k_tid_t cadence_thread_id;
-#define CADENCE_THREAD_STACK_SIZE 1024
-#define CADENCE_THREAD_PRIORITY -1 // high priority to ensure consistent readings
-
-void cadence_entry(void *arg1, void *arg2, void *arg3)
-{
-    while(1){
-        k_sem_take(&cadence_semaphore, K_FOREVER);
-        uint64_t current_time = k_uptime_get();
-
-        // Calculate cadence (RPM) based on time since last button press
-        if (last_button_time != 0) {
-            uint64_t delta_t = current_time - last_button_time;
-
-            if (delta_t > 0) {
-                uint16_t calculated_cadence = (60000 / delta_t);  // Calculating cadence (ms to min conversion)
-
-                // Lock the cadence mutex before updating the global cadence
-                if (k_mutex_lock(&cadence_val_mutex, K_MSEC(50)) == 0) {
-                    global_cadence = calculated_cadence;
-                    LOG_INF("Calculated Cadence: %d RPM", global_cadence);
-                    k_mutex_unlock(&cadence_val_mutex);
-                } else {
-                    LOG_ERR("Failed to lock mutex for cadence update");
-                }
-            }
-        }
-        // Update the last button press time
-        last_button_time = current_time;
-    }
-}
-
-K_THREAD_STACK_DEFINE(cadence_thread_stack, CADENCE_THREAD_STACK_SIZE);
-// K_THREAD_DEFINE(cadence_thread, 1024, cadence_entry, NULL, NULL, NULL, -1, 0, 0);
 // --------------------------------- MAIN APPLICATION ------------------------------------------------
 
 /* Main function */
@@ -416,11 +364,7 @@ int main(void) {
                                     NULL, NULL, NULL,
                                     BLE_THREAD_PRIORITY, 0, K_NO_WAIT);
 
-    cadence_thread_id = k_thread_create(&cadence_thread_data, cadence_thread_stack,
-                                        K_THREAD_STACK_SIZEOF(cadence_thread_stack),
-                                         cadence_entry,
-                                         NULL, NULL, NULL,
-                                         CADENCE_THREAD_STACK_SIZE, 0, K_NO_WAIT);
+
 
     /* -------------- BLUETOOTH -----------------*/
     // srand(k_uptime_get());
@@ -490,37 +434,8 @@ int main(void) {
 
     /* Add the callback function by calling gpio_add_callback()   */
     gpio_add_callback(button0.port, &button_cb_data);
-    
-    /* Initialize the timer */
-    k_timer_init(&debounce_timer, debounce_timer_handler, NULL);
 
     LOG_INF("GPIO interrupt routine set up");
-    
-    // Rising edge signal triggered interrupt
-    
-    if (!device_is_ready(signal_pin.port)) {
-        LOG_ERR("Error: GPIO device %s is not ready", signal_pin.port->name);
-        return -1;
-    }
-
-    /* Configure P0.05 as input with a rising edge interrupt */
-    err = gpio_pin_configure_dt(&signal_pin, GPIO_INPUT | GPIO_ACTIVE_HIGH);
-    if (err < 0) {
-        LOG_ERR("Error configuring GPIO pin");
-        return -1;
-    }
-
-    err = gpio_pin_interrupt_configure_dt(&signal_pin, GPIO_INT_EDGE_RISING);
-    if (err < 0) {
-        LOG_ERR("Error configuring GPIO interrupt");
-        return -1;
-    }
-
-    /* Initialize and add GPIO callback */
-    gpio_init_callback(&interrupt_cb_data, interrupt_handler, BIT(signal_pin.pin));
-    gpio_add_callback(signal_pin.port, &interrupt_cb_data);
-
-    LOG_INF("Interrupt on P0.05 configured for rising edge");
 
     LOG_INF("Device completely set up and functional");
 
