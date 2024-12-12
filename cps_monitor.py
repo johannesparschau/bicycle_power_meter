@@ -76,13 +76,21 @@ frame.grid(row=0, column=0, sticky=(tk.W, tk.E, tk.N, tk.S))
 sub_frame = ttk.Frame(frame)
 sub_frame.grid(row=0, column=0)
 
+# Power Name Label
+power_name_label = ttk.Label(sub_frame, text="Power:", font=("Arial", 20), anchor="w")
+power_name_label.grid(row=0, column=0, padx=20, pady=(10, 5), sticky="w")
+
+# Cadence Name Label
+cadence_name_label = ttk.Label(sub_frame, text="Cadence:", font=("Arial", 20), anchor="w")
+cadence_name_label.grid(row=0, column=1, padx=20, pady=(10, 5), sticky="w")
+
 # Instant Power Label
-power_label = ttk.Label(sub_frame, text="0 W", font=("Arial", 48))
-power_label.pack(side="left", padx=20)
+power_label = ttk.Label(sub_frame, text="0 W", font=("Arial", 48), anchor="w")
+power_label.grid(row=1, column=0, padx=20, pady=(5, 20), sticky="w")
 
 # Cadence Label
-cadence_label = ttk.Label(sub_frame, text="0 RPM", font=("Arial", 48))
-cadence_label.pack(side="left", padx=20)
+cadence_label = ttk.Label(sub_frame, text="0 RPM", font=("Arial", 48), anchor="w")
+cadence_label.grid(row=1, column=1, padx=20, pady=(5, 20), sticky="w")
 
 # Matplotlib Plot for Time Series of Power Readings
 fig, ax = plt.subplots()
