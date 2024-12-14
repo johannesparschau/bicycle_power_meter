@@ -124,7 +124,6 @@ k_tid_t cadence_thread_id;
 /* Define a variable of type static struct gpio_callback */
 static struct gpio_callback button_cb_data;
 
-//TODO: Not used. Check if needed
 /* GPIO callback structure for interrupt signal*/
 static struct gpio_callback interrupt_cb_data;
 
