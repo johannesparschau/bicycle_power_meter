@@ -15,6 +15,7 @@ Nordic semiconductor nRF5340, eventually on application specific circuitry, but 
 ## Getting started
 ### Using the software for the board
 Follow the steps on [Nordic Semiconductor Academy](https://academy.nordicsemi.com/courses/nrf-connect-sdk-fundamentals) to install all the required software. Afterwards, clone this repository, build the application (`west build`) and flash it to the board (`west flash`).  
+### Running the python GUI
 To run the python GUI for viewing the power and cadence that is broadcasted, make a virtual environment (`python3 -m venv .venv`), activate it (`.venv\Scripts\activate`) and install the packages "bleak", "tkinter" and "matplotlib" (`pip install bleak tkinter matplotlib`). Then run the GUI (`python cps_monitor.py`) and observe the power and cadence values.  
 
 ## Resources
