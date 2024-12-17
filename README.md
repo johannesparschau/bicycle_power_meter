@@ -1,27 +1,31 @@
-# Power Meter for a bicycle cleat
+# Power Meter for a bicycle shoe cleat
 
 ## Goal
-Visualize real time reading of power (voltage) from a power meter on a simple, affordable bicycle shoe cleat. This involves three energy-efficient programmes:  
-a) Programme that runs on the board in the cleat (with a microchip Nordic Semiconductor nRF5340)  
-b) App that runs on a PC, communacting with the board in the cleat via USB  
-c) App that runs on an Android phone, communicating with the board via Bluetooth (later: following ANT+ profile)  
+Visualize real time reading of power (voltage) from a power meter in a simple, affordable and energy-efficient bicycle shoe cleat. This involves two programmes:  
+a) Programme that runs on the board in the cleat, which measures voltage and cadence, converts the values to power and broadcasts it via Bluetooth.    
+b) Programme that runs on a PC, visualizes power values that are received via Bluetooth.    
 
 ## Detailed description
-Function: Read capacitor charge (voltage) at magnetic switch triggered interrupts. Convert to power reading with a data-defined calibration function, and Kalman filter. Broadcast the power reading via Bluetooth (later: following ANT+ Bicycle Power profile (either 1Hz, or event-synchronous))
+1. Read capacitor charge (voltage) at magnetic switch triggered interrupts. Measure cadence (time since last interrupt).  
+2. Convert to power with a data-defined calibration function. Use a Kalman filter to smoothen out noise.  
+3. Broadcast the power value via Bluetooth at 1 Hz (later: following ANT+ Bicycle Power profile).
+4. Visualize via Bluetooth received power values on a computer.   
 
-## Platform
-Nordic semiconductor nRF5340, eventually on application specific circuitry, but can be tested on a Thingy:53 or nRF5340 DK, running Zephyr RTOS. Compliance with the ANT+ protocol (Bicycle Power profile). Language: C. Development in VSCode with the nrfConnect Add-On.
+## Tools
+The programme for the cleat was developed on a Nordic semiconductor nRF5340 development kit. It will eventually need to be transitioned to run on application specific circuitry. Both chips are running Zephyr RTOS. Language of the code for the board: C. Language for the visualization program on a computer: Python. Development in VSCode with the nrfConnect Add-On.
 
 ## Getting started
-### Using the software for the board
-Follow the steps on [Nordic Semiconductor Academy](https://academy.nordicsemi.com/courses/nrf-connect-sdk-fundamentals) to install all the required software. Afterwards, clone this repository, build the application (`west build`) and flash it to the board (`west flash`).  
-### Running the python GUI
+### Running the software on the development kit  
+Follow the steps on [Nordic Semiconductor Academy](https://academy.nordicsemi.com/courses/nrf-connect-sdk-fundamentals) to install all the required software (including VSCode nrfConncet add-on). Afterwards, clone this repository, build the application (`west build`) and flash it to the board (`west flash`).  
+### Running the python GUI  
 To run the python GUI for viewing the power and cadence that is broadcasted, make a virtual environment (`python3 -m venv .venv`), activate it (`.venv\Scripts\activate`) and install the packages "bleak", "tkinter" and "matplotlib" (`pip install bleak tkinter matplotlib`). Then run the GUI (`python cps_monitor.py`) and observe the power and cadence values.  
 
-## Resources
+## Resources/Tools
 - [Nordicsemi homepage](https://www.nordicsemi.com/)
-- Learn how to work with boards from Nordic semiconductor: [Nordicsemi Academy](https://academy.nordicsemi.com/)
-- Forum for questions: [Nordicsemi DevZone](https://devzone.nordicsemi.com/)
+- [Nordicsemi nrf5340 dvelopment kit](https://www.nordicsemi.com/Products/Development-hardware/nRF5340-DK)
+- Learn how to work with boards from Nordic semiconductor: [Nordicsemi Academy](https://academy.nordicsemi.com/), specifically the [nRF Connect SDK Fundamentals – Installation Guide](https://academy.nordicsemi.com/courses/nrf-connect-sdk-fundamentals)  
+- Forum for questions: [Nordicsemi DevZone](https://devzone.nordicsemi.com/)  
+- [Zephyr project](https://zephyrproject.org/)
 
 ## Contact
 Institution: Microelectronics Research Unit, ITEE, University of Oulu  
