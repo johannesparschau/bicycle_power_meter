@@ -6,10 +6,11 @@ a) Programme that runs on the board in the cleat, which measures voltage and cad
 b) Programme that runs on a PC, visualizes power values that are received via Bluetooth.    
 
 ## Detailed description
-1. Read capacitor charge (voltage) at magnetic switch triggered interrupts. Measure cadence (time since last interrupt).  
-2. Convert to power with a data-defined calibration function. Use a Kalman filter to smoothen out noise.  
-3. Broadcast the power value via Bluetooth at 1 Hz (later: following ANT+ Bicycle Power profile).
-4. Visualize via Bluetooth received power values on a computer.   
+1. Read capacitor charge (voltage) at button triggered interrupts. Depening on the pressure on the button capacitor charge changes.  
+2. Measure cadence (from time since last interrupt). Concurrently to step 1.  
+3. Convert to power values with a data-defined calibration function. Use a Kalman filter to smoothen out noise.  
+4. Broadcast the power value via Bluetooth at 1 Hz (later: following ANT+ Bicycle Power profile).
+5. Visualize via Bluetooth received power values on a computer.   
 
 ## Tools
 The programme for the cleat was developed on a Nordic semiconductor nRF5340 development kit. It will eventually need to be transitioned to run on application specific circuitry. Both chips are running Zephyr RTOS. Language of the code for the board: C. Language for the visualization program on a computer: Python. Development in VSCode with the nrfConnect Add-On.
