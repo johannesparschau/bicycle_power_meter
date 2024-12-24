@@ -15,6 +15,7 @@ b) Programme that runs on a PC, visualizes power values that are received via Bl
 
 ## Deployment
 ![Flowchart of the system’s functionality showcasing the most important state transitions](docs/deployment_schematic_icons.png)  
+Flowchart of the system’s functionality showcasing the most important state transitions.
 
 ## Tools
 The programme for the cleat was developed on a Nordic semiconductor nRF5340 development kit. It will eventually need to be transitioned to run on application specific circuitry. Both chips are running Zephyr RTOS. Language of the code for the board: C. Language for the visualization program on a computer: Python. Development in VSCode with the nrfConnect add-on.
@@ -28,8 +29,10 @@ To run the python GUI for viewing the power and cadence that is broadcasted, mak
 Below images can be found showcasing how to wire external buttons to the development kit as specified in the code. 
 
 ![Wiring for usage/testing with an external, piezoelectric button](docs/external_button_testing_wiring_named.png)  
+Wiring for usage/testing with an external, piezoelectric button. The button can be pressed to charge the capacitor, thereby increasing measured voltage and to trigger interrupts at every press.
 
-![Wiring for usage/testing with an external, piezoelectric button that is integrated into a shoe sole](docs/shoe_sole_testing_wiring_named.png)  
+![Wiring for usage/testing with an external, piezoelectric button and a piezoelectric button that is integrated into a shoe sole](docs/shoe_sole_testing_wiring_named.png)  
+Wiring for usage/testing with an external, piezoelectric button and a piezoelectric button that is integrated into a shoe sole. The external button can be be pressed to charge the capacitor, thereby increasing measured voltage. The button integrated into the shoe sole can be used to trigger interrupts. 
 
 ## Resources/Tools
 - [Nordicsemi homepage](https://www.nordicsemi.com/)
