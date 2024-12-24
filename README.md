@@ -1,5 +1,5 @@
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
-# Power Meter for a bicycle shoe cleat
+# Power meter for a bicycle shoe cleat
 
 ## Goal
 Visualize real time reading of power (voltage) from a power meter in a simple, affordable and energy-efficient bicycle shoe cleat. This involves two programmes:  
@@ -25,14 +25,12 @@ The programme for the cleat was developed on a Nordic semiconductor nRF5340 deve
 Follow the steps on [Nordic Semiconductor Academy](https://academy.nordicsemi.com/courses/nrf-connect-sdk-fundamentals) to install all the required software (including VSCode nrfConncet add-on). Afterwards, clone this repository, build the application (`west build`) and flash it to the board (`west flash`).  
 ### Running the python GUI  
 To run the python GUI for viewing the power and cadence that is broadcasted, make a virtual environment (`python3 -m venv .venv`), activate it (`.venv\Scripts\activate`) and install the packages "bleak", "tkinter" and "matplotlib" (`pip install bleak tkinter matplotlib`). Then run the GUI (`python cps_monitor.py`) and observe the power and cadence values.  
-### Wiring (for testing)
+### Wiring (for usage/testing)
 Below images can be found showcasing how to wire external buttons to the development kit as specified in the code. 
-
-![Wiring for usage/testing with an external, piezoelectric button](docs/external_button_testing_wiring_named.png)  
-Wiring for usage/testing with an external, piezoelectric button. The button can be pressed to charge the capacitor, thereby increasing measured voltage and to trigger interrupts at every press.
-
-![Wiring for usage/testing with an external, piezoelectric button and a piezoelectric button that is integrated into a shoe sole](docs/shoe_sole_testing_wiring_named.png)  
-Wiring for usage/testing with an external, piezoelectric button and a piezoelectric button that is integrated into a shoe sole. The external button can be be pressed to charge the capacitor, thereby increasing measured voltage. The button integrated into the shoe sole can be used to trigger interrupts. 
+![Wiring for usage/testing with an external, piezoelectric button](docs/external_button_testing_wiring_named.png)
+Wiring for usage/testing with an external, piezoelectric button. The button can be pressed to charge the capacitor, thereby increasing measured voltage and to trigger interrupts at every press.  
+![Wiring for usage/testing with an external, piezoelectric button and a piezoelectric button that is integrated into a shoe sole](docs/shoe_sole_testing_wiring_named.png)
+Wiring for usage/testing with an external, piezoelectric button and a piezoelectric button that is integrated into a shoe sole. The external button can be be pressed to charge the capacitor, thereby increasing measured voltage. The button integrated into the shoe sole can be used to trigger interrupts.  
 
 ## Resources/Tools
 - [Nordicsemi homepage](https://www.nordicsemi.com/)
@@ -46,7 +44,3 @@ Institution: Microelectronics Research Unit, ITEE, University of Oulu
 *We are developers of energy-efficient IoT devices*  
 Name: Yang Bai  
 Email: yang.bai@oulu.fi  
-
-For questions regarding the board: contact Eetu Virta (or Kuisma Hannuksela)  
-
-To be completed: 31.12
