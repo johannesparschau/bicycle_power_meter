@@ -1,0 +1,16 @@
+{
+	"folders": [
+		{
+			"path": "../../../../ncs/v2.9.0"
+		},
+		{
+			"name": "central_and_peripheral_hr",
+			"path": "../../../../ncs/central_and_peripheral_hr"
+		},
+		{
+			"name": "cps_peripheral",
+			"path": ".."
+		}
+	],
+	"settings": {}
+}

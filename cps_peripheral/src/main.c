@@ -25,9 +25,20 @@
 // Zephyr ADC API
 #include <zephyr/drivers/adc.h>
 
+#include <dk_buttons_and_leds.h>
+
+#define RUN_STATUS_LED             DK_LED1
+#define CENTRAL_CON_STATUS_LED	   DK_LED2
+#define PERIPHERAL_CONN_STATUS_LED DK_LED3
+
+
+#define PIN 4
+
 //------------------------- DEFINE ----------------------------------------------
 // #define BT_UUID_CPS BT_UUID_DECLARE_16(0x1818)  // CPS 16-bit UUID
-#define BT_UUID_CPS_MEASUREMENT BT_UUID_DECLARE_16(0x2A63)  // CPS Measurement
+// #define BT_UUID_CPS_MEASUREMENT BT_UUID_DECLARE_16(0x2A63)  // CPS Measurement
+#define SERVICE_UUID BT_UUID_DECLARE_16(0x1818)
+#define CHAR_UUID    BT_UUID_DECLARE_16(0x2A63)
 
 /* KALMAN FILTER: GLOBAL DEFINES FOR EASY ALGORITHM TUNING */
 #define CALIB_COEFF 0.00216    // Calibration coeff for mV -> W conversion
@@ -169,10 +180,44 @@ void interrupt_handler(const struct device *dev, struct gpio_callback *cb, uint3
 void cadence_entry(void *arg1, void *arg2, void *arg3);
 
 
+const struct device *adc_dev;
+
+#include <hal/nrf_saadc.h>
+#define ADC_DEVICE_NAME DT_ADC_0_NAME
+#define ADC_RESOLUTION 12
+#define ADC_GAIN ADC_GAIN_1_6
+#define ADC_REFERENCE ADC_REF_INTERNAL
+#define ADC_ACQUISITION_TIME ADC_ACQ_TIME(ADC_ACQ_TIME_MICROSECONDS, 40)
+#define ADC_1ST_CHANNEL_ID 0
+#define ADC_1ST_CHANNEL_INPUT NRF_SAADC_INPUT_AIN0 //AIN0
+
+static const struct adc_channel_cfg m_1st_channel_cfg = {
+    .gain = ADC_GAIN,
+    .reference = ADC_REFERENCE,
+    .acquisition_time = ADC_ACQUISITION_TIME,
+    .channel_id = ADC_1ST_CHANNEL_ID,
+#if defined(CONFIG_ADC_CONFIGURABLE_INPUTS)
+    .input_positive = ADC_1ST_CHANNEL_INPUT,
+#endif
+};
+
+static const struct adc_channel_cfg m_disabled_channel_cfg = {
+    .gain = ADC_GAIN,
+    .reference = ADC_REFERENCE,
+    .acquisition_time = ADC_ACQUISITION_TIME,
+    .channel_id = ADC_1ST_CHANNEL_ID,
+    .input_positive = NRF_SAADC_INPUT_DISABLED,
+};
+
+
 // --------------------------------- MAIN ------------------------------------------------
 int main(void) {
     int err;
     
+	err = dk_leds_init();
+	if (err) {
+		printk("LEDs init failed (err %d)\n", err);
+	}
     // -------------- THREADS --------------------
     // Initialize semaphore
     k_sem_init(&adc_semaphore, 0, 1);
@@ -212,10 +257,13 @@ int main(void) {
         LOG_ERR("Settings load failed (err %d)", err);
         return -1;
     }
+    else
+    dk_set_led(PERIPHERAL_CONN_STATUS_LED, 1);
 
     bt_ready();
 
     /* -------------- ADC -----------------*/
+
 
     /* Validate that the ADC peripheral (SAADC) is ready */
     if (!adc_is_ready_dt(&adc_channel)) {
@@ -303,7 +351,7 @@ int main(void) {
 }
 
 //------------------------- BT SERVICE SETUP ----------------------------------------
-static uint8_t cycling_power_value[5];  // will be secured by mutex
+static uint8_t cycling_power_value[7];  // will be secured by mutex
 static bool notifications_enabled = false;
 
 /* Mutex for cycling_power_value and cadence */
@@ -327,11 +375,17 @@ static ssize_t read_cycling_power(struct bt_conn *conn, const struct bt_gatt_att
 // TODO: Find a place for this
 /* Define the Cycling Power Service and Characteristics */
 BT_GATT_SERVICE_DEFINE(cps_svc,
-    BT_GATT_PRIMARY_SERVICE(BT_UUID_CPS),
-    BT_GATT_CHARACTERISTIC(BT_UUID_CPS_MEASUREMENT, BT_GATT_CHRC_NOTIFY,
+    BT_GATT_PRIMARY_SERVICE(SERVICE_UUID),
+    BT_GATT_CHARACTERISTIC(CHAR_UUID, BT_GATT_CHRC_NOTIFY,
                            BT_GATT_PERM_READ, read_cycling_power, NULL, cycling_power_value),
     BT_GATT_CCC(ccc_cfg_changed, BT_GATT_PERM_READ | BT_GATT_PERM_WRITE),  // CCC for notifications
 );
+
+/*BT_GATT_CHARACTERISTIC(&custom_uuid.uuid,
+    BT_GATT_CHRC_NOTIFY,
+    BT_GATT_PERM_NONE,
+    NULL, NULL, NULL),
+BT_GATT_CCC(NULL, BT_GATT_PERM_READ | BT_GATT_PERM_WRITE),*/
 
 /* Function to send cycling power notifications */
 static void send_cycling_power_notification(void) {
@@ -346,12 +400,15 @@ static void send_cycling_power_notification(void) {
 }
 
 void ble_notification_thread(void *arg1, void *arg2, void *arg3) {
+    int blink_status = 0;
     while (1) {
         // Sleep for 1 second or adjust the interval as needed for power saving
         k_sleep(K_SECONDS(1));
 
         // Send BLE notification
         send_cycling_power_notification();
+        
+		dk_set_led(RUN_STATUS_LED, (++blink_status) % 2);
     }
 }
 
@@ -363,12 +420,14 @@ static void connected(struct bt_conn *conn, uint8_t err) {
         LOG_ERR("Connection failed (err 0x%02x)", err);
     } else {
         LOG_INF("Connected");
+        dk_set_led(CENTRAL_CON_STATUS_LED, 1);
     }
 }
 
 /* Callback function for Bluetooth disconnection */
 static void disconnected(struct bt_conn *conn, uint8_t reason) {
     LOG_INF("Disconnected (reason 0x%02x)", reason);
+    dk_set_led(CENTRAL_CON_STATUS_LED, 0);
 }
 
 //TODO: Find a place for this
@@ -443,7 +502,15 @@ void voltage_to_power(int voltage_mv) {
         LOG_ERR("Failed to lock mutex for reading cadence value");
         return;
     }
-    uint16_t power = voltage_mv * cadence * CALIB_COEFF;
+
+    
+    double mv_double = 0.0;
+    double cadence_double = 0.0;
+    double power_double = 0.0;
+    mv_double = voltage_mv;
+    cadence_double = cadence;
+    power_double = mv_double * cadence_double * CALIB_COEFF;
+    uint16_t power = power_double; // voltage_mv * cadence * CALIB_COEFF;
 
     if (k_mutex_lock(&power_val_mutex, K_MSEC(50)) == 0) {
         cycling_power_value[0] = 0x00;
@@ -451,6 +518,8 @@ void voltage_to_power(int voltage_mv) {
         cycling_power_value[2] = (uint8_t)((power >> 8) & 0xFF);
         cycling_power_value[3] = (uint8_t)(cadence & 0xFF);
         cycling_power_value[4] = (uint8_t)((cadence >> 8) & 0xFF);
+        cycling_power_value[5] = (uint8_t)(voltage_mv & 0xFF);
+        cycling_power_value[6] = (uint8_t)((voltage_mv >> 8) & 0xFF);
         k_mutex_unlock(&power_val_mutex);
     } else {
         LOG_ERR("Failed to lock mutex for updating power value");
@@ -476,9 +545,63 @@ void kalman_update(KalmanFilter* kf, double measurement) {
     kf->P *= (1 - kf->K);
 }
 
+#define BUFFER_SIZE 1
+static int16_t m_sample_buffer[BUFFER_SIZE];
+
+const struct adc_sequence_options sequence_opts = {
+	.interval_us = 0,
+	.callback = NULL,
+	.user_data = NULL,
+	.extra_samplings = 0,
+};
+
+static int32_t sensor_init(void)
+{
+
+	printk("nRF53 SAADC sampling AIN0 (P0.04)\n");
+	adc_dev = device_get_binding("ADC_0");
+	if (!adc_channel.dev) {
+		printk("device_get_binding ADC_0 failed\n");
+	}
+	int err = adc_channel_setup(adc_channel.dev, &m_1st_channel_cfg);
+	if (err) {
+		printk("Error in adc setup: %d\n", err);
+	}
+}
+
+void disable_adc()
+{
+	int ret;
+
+	adc_dev = device_get_binding("ADC_0");
+	if (!adc_channel.dev) {
+		printk("device_get_binding ADC_0 failed\n");
+	}
+
+	int err = adc_channel_setup(adc_channel.dev, &m_disabled_channel_cfg);
+
+	if (err) {
+		printk("Error in adc setup: %d\n", err);
+	}
+
+	int32_t adc_vref = adc_ref_internal(adc_channel.dev);
+
+	const struct adc_sequence sequence = {
+		.options = &sequence_opts,
+		.channels = BIT(ADC_1ST_CHANNEL_ID),
+		.buffer = m_sample_buffer,
+		.buffer_size = sizeof(m_sample_buffer),
+		.resolution = ADC_RESOLUTION,
+		.oversampling = 4	// takes 8 samples and saves the average value
+	};
+}
+
 void adc_thread(void *arg1, void *arg2, void *arg3) {
     KalmanFilter kf;
     kalman_init(&kf, KALMAN_X, KALMAN_P, KALMAN_Q, KALMAN_R);  // Initialize the Kalman filter with macros
+    /*struct device *dev;
+	dev = device_get_binding("GPIO_0");*/
+    const struct device *dev = DEVICE_DT_GET(DT_NODELABEL(gpio0));
 
     while (1) {
         // Wait for the button press signal
@@ -492,6 +615,22 @@ void adc_thread(void *arg1, void *arg2, void *arg3) {
 
         // Convert voltage to power
         voltage_to_power(voltage_mv);
+
+        // zero the energy storage
+        adc_channel_setup(adc_channel.dev, &m_disabled_channel_cfg);
+        k_sleep(K_MSEC(1)); // Varmistetaan että ADC irrottaa pinniresurssin
+        gpio_pin_configure(dev, PIN, GPIO_OUTPUT_LOW);
+        k_sleep(K_MSEC(200));	
+        gpio_pin_configure(dev, PIN, GPIO_DISCONNECTED);
+        adc_channel_setup(adc_channel.dev, &m_1st_channel_cfg);
+
+       /* disable_adc();
+        gpio_pin_configure(adc_channel.dev, PIN, GPIO_OUTPUT_LOW);
+        k_sleep(K_MSEC(180));	
+        gpio_pin_configure(adc_channel.dev, PIN, GPIO_DISCONNECTED);
+        //SAADC_TASKS_CALIBRATEOFFSET_TASKS_CALIBRATEOFFSET_Trigger;
+        k_sleep(K_MSEC(20));
+        sensor_init();*/
 
         // Apply Kalman filter to the power reading
         if (k_mutex_lock(&power_val_mutex, K_MSEC(50)) == 0) {
